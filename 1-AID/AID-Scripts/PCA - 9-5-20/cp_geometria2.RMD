@@ -1,0 +1,175 @@
+```{r echo=TRUE}
+cat("\014")
+rm(list = ls())
+
+library(ggplot2) 
+library(ggrepel)
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot)
+library(readxl)
+```
+
+```{r echo=TRUE}
+dir_root = "C:/Users/feder/Documents/PERSONAL ACTIVO/Docencia/AID/Clase sabado 05-09/"
+datos_crudos=read_xlsx(paste0(dir_root,"geometria.xlsx"),sheet = 2)
+
+#se queda con los datos de las variables a analizar
+datos = data.frame(datos_crudos[c(2:5)])
+datos
+
+```
+
+```{r echo=TRUE}
+#analsis exploratorio
+boxplot(datos)
+```
+
+```{r echo=TRUE}
+#estandarizo datos
+datos_estandarizados = data.frame(scale(datos))
+boxplot(datos_estandarizados)
+```
+
+```{r echo=TRUE}
+#dispersograma
+pairs(datos,pch=19,cex=0.8)
+```
+
+```{r echo=TRUE}
+#matriz de covarianzas
+matriz_de_covarianzas = cov(datos)
+matriz_de_covarianzas
+```
+
+```{r echo=TRUE}
+#estandarizo datos
+datos_estandarizados = data.frame(scale(datos))
+#calculo la matriz de covarianzas en los datos estandarizados
+cov(datos_estandarizados)
+```
+
+es casualidad que haya obtenido "unos" en la diagonal?
+puedo estimar con esta matriz si mis datos est?n correlacionados?
+tiene sentido que aplique el metodo de componentes principales?
+
+```{r echo=TRUE}
+#matriz de correlaciones aplicada directamente a "datos"
+matriz_de_correlaciones = cor(datos)
+matriz_de_correlaciones
+```
+
+conclusi?n: la matriz de correlaciones de "datos" y
+            la matriz de covarianzas de "datos_estandarizados" es la misma
+
+```{r echo=TRUE}
+#autovalores de la matriz de covarianzas
+desc_mat_cov = eigen(matriz_de_covarianzas)
+autovalores_cov = desc_mat_cov$values
+autovalores_cov
+```
+
+```{r echo=TRUE}
+#autovalores de la matriz de covarianzas
+desc_mat_cor = eigen(matriz_de_correlaciones)
+autovalores_cor = desc_mat_cor$values
+autovalores_cor
+```
+
+```{r echo=TRUE}
+#verificacion de trazas de cada matriz (invariante)
+traza_cov  = sum(diag(matriz_de_covarianzas))
+traza_cor  = sum(diag(matriz_de_correlaciones))
+
+```
+
+- la suma de los autovalores de cada matriz coincide con su respectiva traza
+- las trazas son DISTINTAS
+- Cuanto valdr? la traza de una matriz de correlaciones? Se puede generalizar?
+
+```{r echo=TRUE}
+#cuanta variabilidad concentra cada autovalor?
+#es lo mismo calcular esa variabilidad con los autovalores de una matriz u otra?
+variabilidad_cov = autovalores_cov/traza_cov
+variabilidad_cor = autovalores_cor/traza_cor
+
+```
+
+- Componentes principales
+
+```{r echo=TRUE}
+#comando que ejecuta el metodo de componentes principales
+datos.pc = prcomp(datos,scale = TRUE)
+datos.pc$sdev #raiz cuadrada de los autovalores
+datos.pc$sdev^2
+```
+
+```{r echo=TRUE}
+datos.pc$rotation #autovectores (en columna)
+```
+
+```{r echo=TRUE}
+datos.pc$center #vector de medias (de casualidad coinciden)
+```
+
+```{r echo=TRUE}
+datos.pc$scale #vector de desvios (de casualidad coinciden)
+```
+
+```{r echo=TRUE}
+#loadings
+carga1 = data.frame(cbind(X=1:length(datos),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:length(datos),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+cbind(carga1,carga2)
+```
+
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+```{r echo=TRUE}
+
+ggbiplot(datos.pc, obs.scale=1 ) + 
+  geom_point(colour="royalblue" ) + 
+  geom_text_repel(aes(label=datos_crudos$elemento )   ) +
+  theme(legend.position="none" ) + 
+  xlab( "PC1" ) + ylab( "PC2" )
+
+```
+
+```{r echo=TRUE}
+
+
+```
+
+
+```{r echo=TRUE}
+
+
+```
+
+```{r echo=TRUE}
+
+
+```
+
+```{r echo=TRUE}
+
+
+```
