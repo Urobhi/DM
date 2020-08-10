@@ -21,17 +21,56 @@ sampleo <-function(dataset,split)
     dataset = dataset[mask,]
     return(dataset)
   }
+
+DataTypes <- function(dataset)
+  {
+    # elimino el id
+    dataset = dataset[,-1] 
+    # Seteo como factores
+    dataset$CAPSULE = as.factor(dataset$CAPSULE)
+    dataset$RACE = as.factor(dataset$RACE)
+    dataset$DPROS = as.factor(dataset$DPROS)
+    dataset$DCAPS = as.factor(dataset$DCAPS)
+    
+    # Seteo como numeros
+    dataset$PSA = as.numeric(dataset$PSA)
+    dataset$VOL = as.numeric(dataset$VOL)
+    return(dataset)
+  }
   
 
 ##### Levanto datos y sampleo ######
 prostata = read.csv(file = paste(dirname(Parent_folder),"/AID-Datasets/Prostata.csv",sep=""), dec = ",")
 prostata = sampleo(prostata,0.8)
+prostata2 = read.csv(file = paste(dirname(Parent_folder),"/AID-Datasets/Prostata2.csv",sep=""), dec = ",")
+prostata2 = sampleo(prostata,0.8)
 seguros = read.csv(file = paste(dirname(Parent_folder),"/AID-Datasets/Seguros.csv",sep=""), dec = ",")
 seguros = sampleo(seguros,0.75)
+
+prostata <- DataTypes(prostata)
 
 
 
 #### Clasificación supervisada ####
 
-prostata = prostata[,-1]
+
+
+
+ggplot(data = prostata, mapping = aes(x = CAPSULE, y = PSA, colour = CAPSULE)) + 
+  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+  
+
+ggplot(data = prostata, mapping = aes(x = CAPSULE, y = VOL, colour = CAPSULE)) + 
+  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+
+ggplot(data = prostata, mapping = aes(x = CAPSULE, y = GLEASON, colour = CAPSULE)) + 
+  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+
+ggplot(data = prostata, mapping = aes(x = CAPSULE, y = AGE, colour = CAPSULE)) + 
+  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+
+xtabs(~CAPSULE+RACE, data=prostata)
+xtabs(~CAPSULE+DPROS, data=prostata)
+xtabs(~CAPSULE+DCAPS, data=prostata)
+
 
