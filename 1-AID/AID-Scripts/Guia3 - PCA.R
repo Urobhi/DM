@@ -34,6 +34,7 @@ ggscreeplot(A_PCA, type = c('pev','cev')) +
   geom_line(colour='royalblue')+
   geom_point(colour='royalblue')
 
+
 vector <- c(2,2,1) 
 valor4 <- vector %*% as.matrix(carga2[,2:3])
 valor4 

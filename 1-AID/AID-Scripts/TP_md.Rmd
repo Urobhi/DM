@@ -1,3 +1,10 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r echo=FALSE}
 library(dplyr)
 library(cluster)
 library(pracma)
@@ -8,10 +15,6 @@ library(lattice)
 library(grid)
 library(DMwR)
 library(readxl)
-library(reshape)
-library(GGally)
-library(magrittr)
-library(tibble)
 library(dendextend)
 library(cluster)
 library(factoextra)
@@ -21,12 +24,14 @@ library(nortest)
 library(e1071)
 library(pracma)
 library(NbClust)
-GrandParent_folder <- dirname(dirname(rstudioapi::getSourceEditorContext()$path))
-Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
-#source(paste(dirname(GrandParent_folder),"/Funciones.R", sep= ""))
-source(paste(dirname(Parent_folder),"/ggbiplot.r", sep= ""))
-source(paste(dirname(Parent_folder),"/ggscreeplot.r", sep= ""))
 
+source("./ggbiplot.r")
+source("./ggscreeplot.r")
+```
+
+
+```{r echo=TRUE}
+# Defino funciones
 sampleo <-function(dataset,split)
   {
     dni = 36637757
@@ -83,47 +88,27 @@ seguros_Datatypes <- function(dataset)
   
 }
 
-
-determinark = function(datA_esc,kmax,f,metrica) {
-  
-  sil = array()
-  #sil_2 = array()
-  sse = array()
-  bet = array()
-  
-  datA_dist= dist(datA_esc,method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
-  for ( i in  2:kmax) {
-    if (strcmp(f,"kmeans")==TRUE) {   
-      CL  = kmeans(datA_esc,centers=i,nstart=50,iter.max = kmax)
-      sse[i]  = CL$tot.withinss 
-      bet[i] = CL$betweenss
-      CL_sil = silhouette(CL$cluster, datA_dist)
-      sil[i]  = summary(CL_sil)$avg.width
-    }
-    if (strcmp(f,"pam")==TRUE){       
-      CL = pam(x=datA_esc, k=i, diss = F, metric = metrica)
-      sse[i]  = CL$objective[1] 
-      sil[i]  = CL$silinfo$avg.width
-    }
-  }
-  sse
-  sil
-  return(data.frame(sse,sil,bet))
-}
+```
 
 
-##### Levanto datos y sampleo ######
-prostata = read.csv(file = paste(dirname(Parent_folder),"/AID-Datasets/Prostata.csv",sep=""), dec = ",")
+```{r echo=TRUE}
+prostata = read.csv(file ="./Prostata.csv",dec = ",")
 prostata = sampleo(prostata,0.8)
-prostata <- DataTypes(prostata) # Corrijo tipos de datos, elimino nulos,etc
+prostata <- prostata_DataTypes(prostata) # Corrijo tipos de datos, elimino nulos,etc
 
 nums <- unlist(lapply(prostata, is.numeric))
 prostata_nums = prostata[,nums]
 prostata_factor = prostata[,!nums]
 
-cor(prostata_nums)
+prostata.train_test = train_test(prostata,split = 0.8)  # Dejo los dataset para clasificar no ingenuamente
 
-#### Visualizacion de algunos datos ####
+
+```
+
+
+```{r echo=TRUE}
+
+
 
 par(mfcol = c(1,length(prostata_nums)))
 for (k in 1:length(prostata_nums))
@@ -144,12 +129,15 @@ for (k in 1:length(prostata_nums)){
 }
 pval # Rechazo normalidad por en todas
 
+cor(prostata_nums)
+
+```
 
 
+```{r echo=TRUE}
 ggplot(data = prostata, mapping = aes(x = CAPSULE, y = PSA, colour = CAPSULE)) + 
   geom_boxplot() + theme_bw() + theme(legend.position =  "none")
-ggplot(data = prostata, mapping = aes(x = CAPSULE, y = VOL, colour = CAPSULE)) + 
-  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+
 ggplot(data = prostata, mapping = aes(x = CAPSULE, y = GLEASON, colour = CAPSULE)) + 
   geom_boxplot() + theme_bw() + theme(legend.position = "none")
 ggplot(data = prostata, mapping = aes(x = CAPSULE, y = AGE, colour = CAPSULE)) + 
@@ -159,103 +147,83 @@ xtabs(~CAPSULE+RACE, data=prostata)
 xtabs(~CAPSULE+DPROS, data=prostata)  # Examen prostatico ( 1 no hay, 2 unico izq, 3 unico der ,4  ambos)
 xtabs(~CAPSULE+DCAPS, data=prostata)  # deteccion de envoltura ( 1 si 2 no)
 
-
-##### Clasificacion Supervisada ######
-
+```
 
 
-
-##### SeparaciÛn en train y test ######
-prostata.train_test = train_test(prostata,split = 0.8)
-
-
-##### Modelo 1 ####
+```{r echo=TRUE}
 prostata_glm = glm(data = prostata.train_test[[1]], CAPSULE~., family = "binomial" )
-prostata_stepwise_glm <- prostata_glm %>%  stepAIC(trace=FALSE)
 summary(prostata_glm)
-summary(prostata_stepwise_glm)
 
 prostata.pred_test<-predict(prostata_glm,newdata=prostata.train_test[[2]], type="response") 
 prostata.pred_test = ifelse(test=prostata.pred_test > 0.5,yes=1,no=0)
 confusion_matrix=confusionMatrix(prostata.train_test[[2]]$CAPSULE,as.factor(prostata.pred_test))
 confusion_matrix
 
+```
+```{r echo=TRUE}
 # No deseable tener falsos negativos
 prostata.pred_test<-predict(prostata_glm,newdata=prostata.train_test[[2]], type="response") 
-prostata.pred_test = ifelse(test=prostata.pred_test > 0.25,yes=1, no=0)
+prostata.pred_test = ifelse(test=prostata.pred_test > 0.10,yes=1, no=0)
 confusion_matrix=confusionMatrix(as.factor(prostata.pred_test),prostata.train_test[[2]]$CAPSULE)
-table(prostata.train_test[[2]]$CAPSULE,prostata.pred_test)
 confusion_matrix
+
+```
+```{r echo=TRUE}
+# Este algoritmo permite encontrar una f√≥rmula m√°s simple sin perder mucha bondad de clasificaci√≥n
+
+prostata_stepwise_glm <- prostata_glm %>%  stepAIC(trace=FALSE)
+summary(prostata_stepwise_glm)
 
 prostata.pred_test<-predict(prostata_stepwise_glm,newdata=prostata.train_test[[2]], type="response") 
-prostata.pred_test = ifelse(test=prostata.pred_test > 0.25,yes=1,no=0)
+prostata.pred_test = ifelse(test=prostata.pred_test > 0.11,yes=1,no=0)
 confusion_matrix=confusionMatrix(as.factor(prostata.pred_test),prostata.train_test[[2]]$CAPSULE)
 confusion_matrix
 
+```
 
-##### Modelo 2 #####
 
+```{r echo=TRUE}
 prostata_svm=svm(CAPSULE~ .,
               data=prostata.train_test[[1]],
-              method="C-classification",
-              kernel="radial",
-              cost=1,
+              method="C-Classification",
+              kernel="sigmoid",
+              cost=100,
               gamma=1/nrow(prostata.train_test[[1]]))
-prostata.train_test[[2]]$svmpred=predict(prostata_svm, prostata.train_test[[2]])
-confusion_matrix=confusionMatrix(as.factor(prostata.pred_test),prostata.train_test[[2]]$CAPSULE)
+svm_pred=predict(prostata_svm, newdata =  prostata.train_test[[2]])
+
+confusion_matrix=confusionMatrix(as.factor(svm_pred),prostata.train_test[[2]]$CAPSULE)
 confusion_matrix
 
+```
 
-# PCA para vaiables
-prostata.numeric= prostata[,nums]
-prost.PCA = prcomp(prost,center = TRUE, scale. = TRUE)
+```{r echo=TRUE}
+prostata_test.numeric= prostata.train_test[[2]][,nums]
+prostata_test.PCA = prcomp(prostata_test.numeric,center = TRUE, scale. = TRUE)
+ggbiplot(prostata_test.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata.pred_test,prostata.train_test[[2]]$CAPSULE))
 
-ggscreeplot(prost.PCA, type = c('pev','cev')) +
-  xlab('Componente principal') +
-  ylab('Proporcion de la variabilidad explicada')+
-  geom_line(colour='royalblue')+
-  geom_point(colour='royalblue')
+ggbiplot(prostata_test.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata.train_test[[2]]$CAPSULE))
 
+ggbiplot(prostata_test.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata.pred_test))
 
-ggbiplot(prost.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata$CAPSULE))
+```
 
-
-
-# Clusters para variables numÈricas 
-prostata.kmeans = kmeans(scale(prostata[,nums]),2)
-prostata$kmeansclust = as.factor(prostata.kmeans$cluster)
-
-ggbiplot(prost.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata$CAPSULE))
-ggbiplot(prost.PCA,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(prostata$kmeansclust))
-
-#Clusters para analisis de correspondencias utilizando los clusters
-catprost = prostata[,!nums] 
-catprost.AC = MCA(catprost, graph=F)
-fviz_mca_var(catprost.AC,repel=TRUE,col.var="royalblue")+  theme_gray()
-
-
-
-
-
-
-
-
-
-
-
-
-##### Seguros ####
-seguros = read.csv(file = paste(dirname(Parent_folder),"/AID-Datasets/Seguros.csv",sep=""), dec = ",")
+```{r echo=TRUE}
+seguros = read.csv(file = "./Seguros.csv", dec = ",")
 seguros = sampleo(seguros,0.75)
 seguros = seguros_Datatypes(seguros)
-seguros = seguros[seguros$hijos < 300 & seguros$primadelseguro < 40000,]
-
+seguros = seguros[seguros$hijos < 300 & seguros$primadelseguro < 39000,]
 nums <- unlist(lapply(seguros, is.numeric))
 seguros.numeric = seguros[,nums]
 seguros.factor = seguros[,!nums]
+seguros.pca = prcomp(seguros.numeric,scale = TRUE)
+ggbiplot(seguros.pca, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(seguros$sexo) )
+ggbiplot(seguros.pca, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(seguros$region) )
 
 
-###### PLOTS ####
+
+```
+
+```{r echo=TRUE}
 boxplot(scale(seguros.numeric))
 
 ggplot(data = seguros, mapping = aes( y = edad)) + 
@@ -302,69 +270,99 @@ ggplot(data = seguros, mapping = aes(x = region, y = primadelseguro, colour = re
   geom_boxplot() + theme_bw() + theme(legend.position = "none")
 
 
+
+# Correlacion en las variables numricas
 round(cor(seguros.numeric),2)
+ 
 
 
 
-##### No supervisada #####
+```
+
+```{r echo=TRUE}
+kmax = 10
 seguros.pca = prcomp(seguros.numeric,scale = TRUE)
 
-kmax = 7
-m1   = determinark(scale(seguros.numeric),kmax,"pam",metrica = "manhattan")               #tipica de la normal
-
-par(mfrow=c(3,1))
-plot(2:kmax, m1$sil[2:kmax],col=1,type="b", pch = 19, frame = FALSE, 
-     xlab="Numero de clusters",
-     ylab="sil") 
-
-plot(2:kmax, m1$sse[2:kmax],type="b", pch = 19, frame = FALSE, 
-     xlab="Numero de clusters",
-     ylab="SS within") 
-
-plot(2:kmax, m1$bet[2:kmax],type="b", pch = 19, frame = FALSE, 
-     xlab="Numero de clusters",
-     ylab="SS between") 
-
-par(mfrow=c(1,1))
+```
 
 
-fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50 ,diss = dist(scale(seguros.numeric),method = "euclidean") ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
-a =fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50 ,diss = dist(scale(seguros.numeric),method = "euclidean") ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
-a$data$y
+```{r echo=TRUE}
+a= fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="euclidean" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(a$data$y)
+b= fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="manhattan" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(b$data$y)
+c= fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="maximum" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(c$data$y)
+d=fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="minkowski" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(d$data$y)
 
+```
 
-# Matriz de distancias euclÌdeas 
-mat_dist <- dist(x = scale(seguros.numeric), method = "euclidean") 
+```{r echo=TRUE}
+a= fviz_nbclust(scale(seguros.numeric),kmeans,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="euclidean" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(a$data$y)
+b= fviz_nbclust(scale(seguros.numeric),kmeans,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="manhattan" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(b$data$y)
+c= fviz_nbclust(scale(seguros.numeric),kmeans,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="maximum" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(c$data$y)
+d=fviz_nbclust(scale(seguros.numeric),kmeans,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="minkowski" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+max(d$data$y)
 
-# Dendrogramas (seg˙n el tipo de segmentaciÛn jer·rquica aplicada)  
+```
+
+```{r echo=TRUE}
+fviz_nbclust(scale(seguros.numeric),hcut,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="manhattan" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+fviz_nbclust(scale(seguros.numeric),kmeans,method = c("silhouette"),nboot = 50,diss = dist(scale(seguros.numeric),method ="euclidean" )  ) # Elegimos 5 clusters por el critero de maximizar mean silhouette
+
+```
+
+```{r echo=TRUE}
+mat_dist <- dist(x = scale(seguros.numeric), method = "manhattan") 
 hc_complete <- hclust(d = mat_dist, method = "complete") 
 hc_average  <- hclust(d = mat_dist, method = "average")
 hc_single   <- hclust(d = mat_dist, method = "single")
 hc_ward     <- hclust(d = mat_dist, method = "ward.D2")
-#calculo del coeficiente de correlacion cofenetico
-cor(x = mat_dist, cophenetic(hc_complete))
-cor(x = mat_dist, cophenetic(hc_average))
-cor(x = mat_dist, cophenetic(hc_single))
-cor(x = mat_dist, cophenetic(hc_ward))
 
-plot(hc_complete )#no se ve bien si hay muchos datos
-plot(hc_average )#no se ve bien si hay muchos datos
-plot(hc_single )#no se ve bien si hay muchos datos
-plot(hc_ward )#no se ve bien si hay muchos datos
-rect.hclust(hc_complete, k=5, border="red")#con 3 grupos
-seguros$hcluster<-cutree(hc_ward,k=5)#con 3 grupos
+```
 
+```{r echo=TRUE}
+plot(hc_complete )
+rect.hclust(hc_complete, k=5, border="red")
+
+plot(hc_average )
+rect.hclust(hc_average, k=5, border="red")
+
+plot(hc_single )
+rect.hclust(hc_single, k=5, border="red")
+
+plot(hc_ward )
+rect.hclust(hc_ward, k=5, border="red")
+
+
+
+```
+
+```{r echo=TRUE}
+seguros$hcluster<-cutree(hc_ward,k=5)#con 5 grupos
 ggbiplot(seguros.pca, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(seguros$hcluster) )
 
-
-seguros.kmeans = kmeans(scale(seguros.numeric),nstart=50,6)
-kmeans(scale(seguros.numeric),nstart=50,10)
-seguros$kmeansclust = as.factor(seguros.kmeans$cluster)
-
-ggbiplot(seguros.pca,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(seguros$kmeansclust))
-ggbiplot(seguros.pca,obs.scale = 1,var.scale = 1,alpha = 0.5, groups = interaction(seguros$region))
-
-seguros.numeric %>% mutate(kmeansclust = seguros.kmeans$cluster) %>%  mutate(region = as.numeric(seguros$region) -1) %>%  mutate(sexo = as.numeric(seguros$sexo)-1)%>% 
-  group_by(kmeansclust) %>%
+seguros %>%  mutate(region = as.numeric(seguros$region) -1) %>%  mutate(sexo = as.numeric(seguros$sexo)-1)%>% 
+  group_by(hcluster) %>%
   summarise_all(mean) 
+
+```
+
+
+```{r echo=TRUE}
+seguros.kmeans = kmeans(scale(seguros.numeric),nstart=50,centers = 5)
+seguros$kmeanscluster = as.factor(seguros.kmeans$cluster)
+
+ggbiplot(seguros.pca, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(seguros$kmeansclust) )
+
+seguros %>%  mutate(region = as.numeric(seguros$region) -1) %>%  mutate(sexo = as.numeric(seguros$sexo)-1)%>% 
+  group_by(kmeanscluster) %>%
+  summarise_all(mean) 
+
+```
+
 

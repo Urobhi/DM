@@ -1,0 +1,431 @@
+```{r echo=TRUE}
+cat("\014")
+rm(list = ls())
+library(ggplot2) 
+library(ggrepel)
+library(devtools)
+library(readxl)
+library(nortest)
+Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
+source(paste(dirname(Parent_folder),"/ggbiplot.r", sep= ""))
+source(paste(dirname(Parent_folder),"/ggscreeplot.r", sep= ""))
+```
+
+```{r echo=TRUE}
+situacion_analisis= c(1,2,3)      #grupo de alumnos a analizar según situacion academica
+cuat_ini_analisis = 20090         #cuatrimestre inicial de analisis (siempre hasta el presente)
+columnas = c(1,8,9,12:17)         #variables a tener en cuenta (menos que las de egresados)
+
+```
+
+```{r echo=TRUE}
+datos_crudos=read_xlsx(paste(dirname(Parent_folder),"/AID-Datasets/base_de_alumnos.xlsx",sep=""),
+                       sheet = 1,col_types = "numeric")
+
+datos_numericos_1 = datos_crudos[(datos_crudos$acuat_ing>=cuat_ini_analisis)&
+                                  datos_crudos$sit_ac %in% situacion_analisis,]
+
+datos_numericos_2 = data.frame(datos_numericos_1[columnas])
+#se queda con casos completos
+datos_completos = datos_numericos_2[complete.cases(datos_numericos_2),]
+datos = datos_completos[c(3:ncol(datos_completos))]
+
+```
+
+```{r echo=TRUE}
+#analsis exploratorio
+par(mfcol = c(1,length(datos)))
+    for (k in 1:length(datos)){
+      boxplot(datos[k],main = names(datos[k]))
+      grid()
+    }
+```
+```{r echo=TRUE}
+#analsis exploratorio
+par(mfcol = c(2,4))
+#par(mfcol = c(1,length(datos)))
+    for (k in 1:length(datos)){
+      hist(datos[,k],proba = T,main = names(datos[,k]),10)
+      x0 <- seq(min(datos[, k]), max(datos[, k]), le = 50) 
+      lines(x0, dnorm(x0, mean(datos[,k]), sd(datos[,k])), col = "red", lwd = 2) 
+      grid()
+    }
+```
+
+```{r echo=TRUE}
+#analsis exploratorio
+pval = list() 
+par(mfcol = c(1,length(datos)))
+    for (k in 1:length(datos)){
+      qqnorm(datos[,k],main = names(datos[k]))
+      qqline(datos[,k],col="red") 
+      pval[k] = ad.test(datos[,k])$p.value
+      grid()
+    }
+
+```
+
+```{r echo=TRUE}
+pval
+```
+
+
+```{r echo=TRUE}
+#estandarizo datos
+datos_estandarizados = data.frame(scale(datos))
+boxplot(datos_estandarizados)
+```
+
+```{r echo=TRUE}
+#dispersograma - Ojo que tarda
+#pairs(datos_estandarizados,pch=19,cex=0.8)
+```
+
+```{r echo=TRUE}
+#matriz de correlaciones aplicada directamente a "datos"
+matriz_de_correlaciones = cor(datos)
+round(matriz_de_correlaciones,2)
+```
+
+```{r echo=TRUE}
+desc_mat_cor = eigen(matriz_de_correlaciones)
+autovalores_cor = desc_mat_cor$values
+round(autovalores_cor,2)
+```
+
+```{r echo=TRUE}
+#cuanta variabilidad concentra cada autovalor?
+#es lo mismo calcular esa variabilidad con los autovalores de una matriz u otra?
+variabilidad_cor = autovalores_cor/sum(autovalores_cor)
+round(variabilidad_cor,2)
+```
+
+- Componentes principales
+
+```{r echo=TRUE}
+#comando que ejecuta el metodo de componentes principales
+datos.pc = prcomp(datos,scale = TRUE)
+#datos.pc$sdev #raiz cuadrada de los autovalores
+round(datos.pc$sdev^2,2)
+```
+
+```{r echo=TRUE}
+round(datos.pc$rotation,2) #autovectores (en columna)
+```
+
+```{r echo=TRUE}
+round(datos.pc$center,2) #vector de medias (de casualidad coinciden)
+```
+
+```{r echo=TRUE}
+round(datos.pc$scale,2) #vector de desvios
+```
+
+```{r echo=TRUE}
+#loadings
+carga1 = data.frame(cbind(X=1:length(datos),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:length(datos),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+round(cbind(carga1,carga2),2)
+```
+
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1,alpha=0.0) #cambiando el alfa?
+```
+
+```{r echo=TRUE}
+#calculo de scores de cada individuo
+CP1 = as.matrix(datos_estandarizados)%*%as.matrix(carga1[2])
+CP2 = as.matrix(datos_estandarizados)%*%as.matrix(carga2[2])
+datos_estandarizados$CP1 = CP1
+datos_estandarizados$CP2 = CP2
+```
+
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=0.5 ,var.scale=1,
+         alpha=0.5,groups=factor(datos_completos$sit_ac)) +
+  scale_color_manual(name="situacion academica", values=c("black", "red","green"),labels=c("cursantes", "desertores","egresados")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+
+```
+
+```{r echo=TRUE}
+library(MASS)
+datos_train = datos_completos[datos_completos$sit_ac  %in% c(2,3),]    #se realiza un analisis discriminante con las clases 2 y 3
+modelo_lda <- lda(formula = as.factor(sit_ac) ~ 
+                  edad_1c    + n_mat_1c + n_fallas_1c   + prom_1c 
+                + n_mat_1y2c + n_fallas_1y2c + prom_1y2c , data = datos_train)
+modelo_lda
+```
+
+```{r echo=TRUE}
+#predecimos la clase en base al modelo entrenado (o sea, como se comportan los mismos datos usados para el modelo)
+pred_lda_train <- predict(modelo_lda,datos_train)
+table(datos_train$sit_ac, pred_lda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+```{r echo=TRUE}
+pred_lda_train_2 = ifelse(pred_lda_train$posterior[,1]>0.5,2,3)    #que significa esta linea? que es el 0.5??
+table(datos_train$sit_ac, pred_lda_train_2, dnn = c("Clase real","Clase predicha"))
+
+```
+
+```{r echo=TRUE}
+#posible intento de entender como se comporta la clase frente a las variables originales.
+#Se puede hacer algo mejor?
+library(klaR) 
+partimat(as.factor(sit_ac) ~ edad_1c + n_mat_1c + n_fallas_1c + prom_1c, 
+         data = datos_train, method = "lda", prec = 200,
+         image.colors = c("darkgoldenrod1", "snow2"),col.mean = "firebrick")
+
+```
+
+```{r echo=TRUE}
+pred_lda_completos <- predict(modelo_lda,datos_completos)
+
+ggbiplot(datos.pc, obs.scale=0.1 ,var.scale=1,
+         alpha=1,groups=factor(pred_lda_completos$class)) +
+  scale_color_manual(name="prediccion lda", values=c("red","green"),labels=c("desertores","egresados")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+
+```
+
+```{r echo=TRUE}
+
+modelo_qda <- qda(as.factor(sit_ac) ~ 
+                  edad_1c    + n_mat_1c + n_fallas_1c   + prom_1c 
+                + n_mat_1y2c + n_fallas_1y2c + prom_1y2c , data = datos_train)
+modelo_qda
+```
+
+```{r echo=TRUE}
+pred_qda_train <- predict(modelo_qda,datos_train)
+table(datos_train$sit_ac, pred_qda_train$class, dnn = c("Clase real","Clase predicha"))
+
+```
+
+```{r echo=TRUE}
+# Y cuanto daba con el lda??
+table(datos_train$sit_ac, pred_lda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+```{r echo=TRUE}
+library(caret)
+confusion_lda = confusionMatrix(factor(datos_train$sit_ac), pred_lda_train$class)
+confusion_lda
+```
+
+```{r echo=TRUE}
+confusion_qda = confusionMatrix(factor(datos_train$sit_ac), pred_qda_train$class)
+confusion_qda
+```
+
+```{r echo=TRUE}
+pred_qda_completos <- predict(modelo_qda,datos_completos)
+
+ggbiplot(datos.pc, obs.scale=0.5 ,var.scale=1,
+         alpha=1,groups=factor(pred_qda_completos$class)) +
+  scale_color_manual(name="prediccion qda", values=c("red","green"),labels=c("desertores","egresados")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+
+```
+
+```{r echo=TRUE}
+#regresión logistica
+modelo_lg <- glm(as.factor(sit_ac) ~ 
+                  edad_1c    + n_mat_1c + n_fallas_1c   + prom_1c 
+                + n_mat_1y2c + n_fallas_1y2c + prom_1y2c , data = datos_train,family=binomial)
+modelo_lg
+
+```
+
+```{r echo=TRUE}
+pred_lg_train  <- predict(modelo_lg,type = "response")
+clase_lg_train  = ifelse(pred_lg_train>0.5,1,0)  #ojo que el modelo genera la clase con 0 y 1 (no con 2 y 3)  
+table(datos_train$sit_ac, clase_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+```{r echo=TRUE}
+#regresión logistica 2. Modelo mas simple sacando las que parecían tener correlación.
+#no es desable tener multicolinealidad de variables regresoras.
+modelo2_lg <- glm(as.factor(sit_ac) ~ 
+                  edad_1c    + n_mat_1c + n_fallas_1c   + prom_1c  , data = datos_train,family=binomial)
+modelo2_lg
+
+```
+
+```{r echo=TRUE}
+pred2_lg_train  <- predict(modelo2_lg,type = "response")
+clase2_lg_train  = ifelse(pred2_lg_train>0.5,1,0)    #que significa esta linea? que es el 0.5??
+
+table(datos_train$sit_ac, clase2_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+```{r echo=TRUE}
+#Modelo support vector machine svm
+library(e1071)
+modelo_svm=svm(as.factor(sit_ac)~edad_1c    + n_mat_1c + n_fallas_1c   + prom_1c 
+                + n_mat_1y2c+n_fallas_1y2c+prom_1y2c,
+               data=datos_train,method="C-classification",kernel="radial",cost=10,gamma=.1)
+pred_svm=predict(modelo_svm, datos_train)
+table(datos_train$sit_ac, pred_svm, dnn = c("Clase real", "Clase predicha"))
+error_svm<- mean(datos_train$sit_ac!= pred_svm) * 100
+error_svm
+
+```
+
+```{r}
+#comparacion de predicciones de diferentes modelos:
+predicciones_varias = cbind(pred_lda_train$posterior[,2],
+                            pred_qda_train$posterior[,2],
+                            pred_lg_train,
+                            pred2_lg_train)
+cor(predicciones_varias)
+
+```
+
+```{r}
+#analisis de cluster
+#este primer bloque es solo para definir funciones.
+library(cluster)
+library(pracma)
+# se define funcion de escalamiento disferente de la tipica normal.
+esc01 <- function(x) { (x - min(x)) / (max(x) - min(x))} 
+# se define una funcion para calcular metricas que orientan sobre el numero de clusters a elegir para el problema.
+metrica = function(datA_esc,kmax,f) {
+  
+  sil = array()
+  #sil_2 = array()
+  sse = array()
+  
+  datA_dist= dist(datA_esc,method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
+  for ( i in  2:kmax) {
+    if (strcmp(f,"kmeans")==TRUE) {   #centroide: tipico kmeans
+      CL  = kmeans(datA_esc,centers=i,nstart=50,iter.max = kmax)
+      sse[i]  = CL$tot.withinss 
+      bet[i] = CL$tot.betweenss
+      CL_sil = silhouette(CL$cluster, datA_dist)
+      sil[i]  = summary(CL_sil)$avg.width
+        }
+    if (strcmp(f,"pam")==TRUE){       #medoide: ojo porque este metodo tarda muchisimo 
+      CL = pam(x=datA_esc, k=i, diss = F, metric = "euclidean")
+      sse[i]  = CL$objective[1] 
+      sil[i]  = CL$silinfo$avg.width
+      }
+  }
+  sse
+  sil
+  return(data.frame(sse,sil,bet))
+}
+```
+
+```{r echo=TRUE}
+#en este bloque se estudia cuantos clusters convendría generar respecto a indicadores tipicos de Clustering --> por ejemplo el "Silhouette"
+kmax = 7
+#2 opciones de escalamiento
+#m1   = metrica(apply(datos,2,esc01),kmax,"kmeans")      #definida en la funcion esc01
+m1   = metrica(scale(datos),kmax,"kmeans")               #tipica de la normal
+
+```
+
+```{r echo=TRUE}
+#graficos de los indicadores de clustering
+par(mfrow=c(2,1))
+plot(2:kmax, m1$sil[2:kmax],col=1,type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sil") 
+
+plot(2:kmax, m1$sse[2:kmax],type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sse") 
+
+par(mfrow=c(1,1))
+
+```
+
+```{r echo=TRUE}
+#elegimos realizar 3 grupos
+CL  = kmeans(scale(datos),5,nstart=50,iter.max = 10)
+#CL  = kmeans(apply(datos,2,esc01),3,nstart=50,iter.max = 10)
+datos$kmeans = CL$cluster
+```
+
+```{r echo=TRUE}
+#en cuales 2 variables me conviene visualizar el cluster?
+plot(datos$edad_1c,datos$prom_1c,col=datos$kmeans)+
+grid()
+```
+
+```{r echo=TRUE}
+#conviene en un biplot ya que tengo las flechas de las variables originales
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(datos$kmeans) )+
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+
+```{r echo=TRUE}
+#lo hacemos finalmente para 3 grupos y lo visualizamos en un biplot
+CL  = kmeans(scale(datos),3,nstart=50,iter.max = 10)
+datos$kmeans = CL$cluster
+
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(datos$kmeans) )+
+  scale_color_manual(name="Cluster kmeans", values=c("orange", "cyan","grey"),labels=c("grupo 1", "grupo 2","grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+```{r echo=TRUE}
+#cluster jerárquico
+datos2=datos[,-8]#quito columna "kmeans"
+datos2=scale(datos2)
+
+# Matriz de distancias euclídeas 
+mat_dist <- dist(x = datos2, method = "euclidean") 
+
+# Dendrogramas (según el tipo de segmentación jerárquica aplicada)  
+hc_complete <- hclust(d = mat_dist, method = "complete") 
+hc_average  <- hclust(d = mat_dist, method = "average")
+hc_single   <- hclust(d = mat_dist, method = "single")
+hc_ward     <- hclust(d = mat_dist, method = "ward.D2")
+#calculo del coeficiente de correlacion cofenetico
+cor(x = mat_dist, cophenetic(hc_complete))
+cor(x = mat_dist, cophenetic(hc_average))
+cor(x = mat_dist, cophenetic(hc_single))
+cor(x = mat_dist, cophenetic(hc_ward))
+```
+
+```{r echo=TRUE}
+# construccion de un dendograma usando los resultados de la técnica de Ward
+plot(hc_ward )#no se ve bien si hay muchos datos
+rect.hclust(hc_ward, k=3, border="red")#con 3 grupos
+grupos<-cutree(hc_ward,k=3)#con 3 grupos
+#split(rownames(datos),grupos)#devuelve una lista con las observaciones separadas por grupo
+```
+
+```{r echo=TRUE}
+#visualizamos con 3 grupos el cluster jerarquico de la misma forma que kmeans
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(grupos) )+
+  scale_color_manual(name="Cluster jerárquico Ward", values=c("orange", "cyan","grey"),labels=c("grupo 1", "grupo 2","grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+
+

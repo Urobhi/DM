@@ -14,7 +14,6 @@ library(ade4)
 library(data.table)
 GrandParent_folder <- dirname(dirname(rstudioapi::getSourceEditorContext()$path))
 Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
-source(paste(dirname(GrandParent_folder),"/Funciones.R", sep= ""))
 source(paste(dirname(Parent_folder),"/ggbiplot.r", sep= ""))
 source(paste(dirname(Parent_folder),"/ggscreeplot.r", sep= ""))
 
