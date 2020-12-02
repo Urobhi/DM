@@ -1,0 +1,419 @@
+---
+title: 'Trabajo Práctico 3: Regresión Logística'
+author: "Patricio Massaro"
+date: '2020-11-30'
+output:
+  html_document:
+    df_print: paged
+  theme: spacelab
+  toc: yes
+  toc_float: yes
+  df_print: paged
+  html_notebook: null
+---
+
+
+# Librerías
+
+```{r message=FALSE} 
+library(rmarkdown)
+library(purrr)
+library(tidyverse)
+library(GGally)
+library(corrr)
+library(tidymodels)
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+library(caret)
+library(modelr)
+library(tidyverse)
+library(tidymodels)
+library(modelr)
+library(ISLR)
+library(GGally)
+library(pROC)
+library(cowplot)
+library(OneR)
+library(rlang)
+library(caret)
+library(MASS)
+```
+
+# Funciones Auxiliares
+
+```{r}
+as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+
+```
+
+# Carga de Datos de entrenamiento y test
+
+Cargamos los datos en memoria y observamos su estructura : 
+
+* El Id es la clave primaria de la tabla, no será usado para los modelos.
+* La clase objetivo es "Survived", indicando con un 1 a los sobrevivientes.
+* Pclass refiere a la clase del ticket de compra, donde 1 es alta y 3 es baja.
+* Name, el nombre de los pasajeros, no será utilizada en los modelos por ser prácticamente única.
+* Sex, el sexo del pasajero.
+* SibSp representa el número de hermanos y parejas abordo
+* parch muestra la cantidad de padres o hijos abordo
+* Ticket muestra el número de ticket, no será utilizado.
+* Fare representa el precio pagado.
+* Cabin muestra el número de cabina, no será utilizado.
+* Embarked refiere a el puerto desde el cual embarcó el pasajero.
+
+No se observan NAs en el dataset.
+
+```{r}
+Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
+Titanic_train = read.csv(file = paste0(Parent_folder,"/Datasets/titanic_complete_train.csv",sep=""),dec = ",")
+Titanic_test = read.csv(file = paste0(Parent_folder,"/Datasets/titanic_complete_test.csv",sep=""),dec = ",")
+# Estrutura
+print("Dataset de entrenamiento")
+Titanic_train %>% str(give.length = FALSE, give.atrr=FALSE,no.list = TRUE,vec.len = 1)
+print("Dataset de Testing")
+Titanic_test %>% str(give.length = FALSE, give.atrr=FALSE,no.list = TRUE,vec.len = 1)
+
+
+
+```
+
+Vamos a hacer un procesamiento de los datos, lo que incluye eliminar columnas que no serán utilizadas, convertir en factor a variables categóricas que fueron interpretadas de otra manera por R y convertir a numérico algunos atributos que fueron interpretados como factors. Se muestrán también las proporciones de la variable objetivo en los datasets. Vemos que la proporción es similar, aunque ligeramente diferente.
+
+Por otro lado, se creará una variable que definirá si el pasajero viajó solo, en base a la cantidad de hermanos, parejas, padres e hijos abordo.
+
+```{r warning=FALSE,message=FALSE}
+preprocessing <- function(Titanic_df){
+  # Seleccionamos variables
+  Titanic_df <- Titanic_df %>% dplyr::select(-c('Name','Ticket','Cabin'))
+                              
+  # Transformamos variables a factor
+  var_tofactor  <- c('Survived','Pclass','Embarked')
+  Titanic_df <- Titanic_df %>% mutate_each(funs(as.factor),var_tofactor)
+  
+  # Transformamos variables a num
+  var_toint <- c('Age','Fare')
+  Titanic_df <- Titanic_df %>% mutate_each(funs(as.numeric),var_toint)
+  
+  # Proporción de target
+  Survived_table = prop.table(table(as.numeric.factor(Titanic_df$Survived)))
+  print('Proporción de las variable objetivo:')
+  print(Survived_table)
+  
+  
+  # Creamos una variable que define si una persona viajó sola
+  Titanic_df <- Titanic_df %>% 
+                   mutate( viaja_solo = as.factor(if_else((SibSp+Parch)>0,0,1)))
+  return(Titanic_df)
+}
+
+print('Dataset de entrenamiento')
+Titanic_train <- preprocessing(Titanic_train)
+print('Dataset de testing')  
+Titanic_test <- preprocessing(Titanic_test)
+
+
+```
+Al realizar el gráfico de GGPairs, se observa lo siguiente en los datos:
+
+* Los pasajeros de primera clase tienen mayor ratio de superviviencia respecto de segunda y tercera.
+* Las mujeres sobrevivieron mucho más que los hombres. Sin embargo, las mujeres de primera clase sobrevivieron casi todas, mientras que en tercera clase la proporción se acerca a 50%.
+* En los datos de  entrenamiento, se ve una concentración de no supervivientes en la franja de 20-30 años, mientras que los sobrevivientes parecen estar distribuidos de forma pareja. Este comportamiento de los sobrevivientes no se repite en testing, lo cual puede afectar la performance de los modelos.
+
+```{r message=FALSE}
+Titanic_train %>% 
+  dplyr::select(c('Survived','Pclass','Sex','Age','Fare')) %>%  
+  ggpairs(progress = FALSE,
+    mapping = aes(colour=Survived),
+    legend  = 1) 
+       
+Titanic_test %>%
+  dplyr::select(c('Survived','Pclass','Sex','Age','Fare')) %>%
+  ggpairs(progress = FALSE,
+    mapping = aes(colour=Survived),
+    legend  = 1) 
+
+
+
+```
+
+Hacemos un split estratificado, verificamos que se mantenga la proporción de la variable objetivo
+
+```{r}
+# Split pero estratificado para preservar la proporción de la clase
+set.seed(7)
+train_mask <- createDataPartition(Titanic_train$Survived, p=0.7, list=FALSE)
+
+Titanic_train_train<- Titanic_train[train_mask,]
+Titanic_train_validation<- Titanic_train[-train_mask,]
+
+
+print('Proporción de las variables train: ')
+print(prop.table(table(Titanic_train$Survived)))
+
+
+print('Proporción de las variables validación:')
+print(prop.table(table(Titanic_train$Survived)))
+
+
+```
+
+# Regresión logística
+
+Aquí comienza la regresión logística, vamos a generar 4 modelos. De ahora en más, todos los datos del tp se guardarán en el dataframe de "models". Añadimos las predicciones en los distintos conjuntos de datos en forma de probabilidades.
+
+```{r}
+# Definición de fórmulas y creación de modelos, luego vemos uno por uno
+logit_formulas <- formulas(
+                           .response = ~Survived, 
+                           baseline_model = ~ Pclass+Sex+Age,
+                           onevariable_model = ~Pclass,
+                           total_model = ~. -PassengerId,
+                           newvariable_model = ~ Pclass + Sex + Age  + SibSp + viaja_solo,
+                           
+                          )
+models <- tibble(logit_formulas) %>% 
+            mutate(
+              models = names(logit_formulas),
+              expression = paste(logit_formulas), 
+              mod = map(logit_formulas, ~glm(., family = 'binomial', data = Titanic_train_train))
+            ) 
+
+
+# Añadimos las predicciones en datos de entrenamiento, validación y test
+models <- models %>% 
+  mutate(
+    pred_train= map(mod,augment, type.predict = "response"),
+    pred_val = map(mod,augment,newdata=Titanic_train_validation,type.predict = "response"),
+    pred_test = map(mod,augment,newdata=Titanic_test,type.predict = "response")
+  )
+
+
+# Abrimos un summary del modelo propuesto por el enunciado
+models %>% 
+  filter(models == "baseline_model") %>%
+  mutate(tidy = map(mod, tidy))  %>% 
+  unnest(tidy)%>% 
+  mutate(estimate=round(estimate,5),
+         p.value=round(p.value,4))
+
+```
+
+La variables categóricas basales son sexo femenino y clase 1 (Alta), la edad inicial es 0. El p-value es menor a 0.05 en todos los casos. De los coeficientes se puede interpretar que: 
+
+* A medida que la clase disminuye (clase media o baja), la probabilidad de sobrevivir baja ( manteniendo el resto de las variables constantes)
+* De la misma forma, el hecho de ser masculino tiene un efecto negativo en la probabilidad de supervivencia manteniendo el resto de las variables constantes
+* La edad también tiene un efecto negativo en la probabilidad de supervivencia dadas las otras covariables constantes.
+
+
+Vamos a ver ahora los efectos de las variables evaluando en algunos individuos. 
+
+```{r}
+models %>% 
+  filter (models == "baseline_model") %>% 
+  unnest(pred_train) %>% 
+  filter((Sex == 'female' & Age ==17 & Pclass == 1) | (Sex =='male' & Age==20 & Pclass ==3) ) %>% 
+  dplyr::select(c('Sex','Age','Pclass','.fitted','Survived'))
+```
+
+**Rose**, mujer de 17 años y viajando en primera clase, tiene una probabilidad muy alta de sobrevivir. En cambio, **Jack**, de una edad similar, pero hombre y con ticket de tercera clase, tiene una probabilidad muy baja.
+
+
+Calculamos las medidas de evaluación de los modelos y comparamos su funcionamiento.
+
+```{r}
+# Calcular las medidas de evaluación para cada modelo
+models <- models %>% 
+  mutate(glance = map(mod,glance))
+
+# Obtener las medidas de evaluacion de interes
+models %>% 
+  unnest(glance) %>% 
+  mutate(perc_explained_dev = 1-deviance/null.deviance) %>% 
+  arrange(deviance) %>% 
+  dplyr::select(c('models','null.deviance','deviance'))
+
+```
+
+Vemos que el modelo que utiliza todas las variables es el que minimiza el deviance. Sin embargo, el modelo propuesto "newvariable_model" tiene un valor muy parecido, utilizando menos variables. Debido a esto será el utilizado durante el resto del trabajo.
+
+
+# Evaluacion de los modelos
+
+Evaluamos los modelos en base a distintas métricas de performance y gráficos que muestran su comportamiento, es importante aclarar que todos estos cálculos se realizan en el conjunto de validación, para evitar evaluar con predicciones del conjunto de entrenamiento y llegar a conclusiones equivocadas.
+
+## Violin plots
+
+```{r}
+
+graph_violin <- function(df,name)
+{
+  violin = ggplot(df, aes(x=Survived, y=.fitted, group=Survived, fill=factor(Survived))) + 
+    geom_violin() +
+    theme_bw() +
+    guides(fill=FALSE) +
+    labs(title='Violin plot', subtitle= name , y='predicted probability')
+  return(violin)
+  # mostramos ambos
+}
+
+models <- models %>%
+          mutate( violin = map2(pred_val,models,graph_violin))
+
+ggarrange( plotlist = models$violin, nrow=2,ncol = 2)
+```
+
+El violin plot muestra que salvo el modelo que usa una sola variable, es posible establecer un punto de corte que haga una buena separación de las clases con relativo éxito. Ese punto se encuentra entre 0.25 y 0.6 aproximadamente, dependiendo de la métrica que se quiera optimizar.
+
+## Curva ROC
+
+
+```{r message=FALSE}
+
+roc_calculation <- function(df)
+{
+  roc_data <- roc(response= df$Survived, predictor = df$.fitted)
+  
+}
+
+# Calculamos curvas ROC
+models <- models %>% 
+          mutate(
+            roc_data = (map(pred_val,roc_calculation))  
+          )
+
+ggroc(models$roc_data, size=1) + 
+  geom_abline(slope = 1, intercept = 1, linetype='dashed') +
+  theme_bw() + 
+  labs(title='Curvas ROC', color='Modelo')      
+
+print(paste("AUC Baseline model",models$roc_data$baseline_model$auc))
+print(paste("AUC onevariable model",models$roc_data$onevariable_model$auc))
+print(paste("AUC total model",models$roc_data$total_model$auc))
+print(paste("AUC newvariable model",models$roc_data$newvariable_model$auc))
+```
+
+Las curvas ROC, salvo el modelo que utiliza una sola variable, son muy similares, con una performance muy buena (AUC de 0.86/0.87). El modelo llega a una sensibilidad  alta (porcentaje de positivos bien identificados) sin sacrificar especificidad (Negativos correctamente identificados). A partir de un valor de 0.8 de sensibilidad la curva se achata, por lo que se debe sacrificar mucha especificidad para seguir mejorando la sensibilidad.
+
+
+## Métricas de performance relativas a la matrix de confusión
+
+A continuación se muestra el comportamiento de distintas métricas al mover los puntos de corte de los modelos.
+
+```{r message=FALSE,warning=FALSE}
+
+prediction_metrics <- function(cutoff, df)
+  {
+  table <- df %>% 
+    mutate(predicted_class=if_else(.fitted>cutoff, 1, 0) %>% as.factor(),
+           Survived= factor(Survived))
+  
+  confusionMatrix(data = table$predicted_class,reference = table$Survived, positive = "1") %>%
+    tidy() %>%
+    dplyr::select(term, estimate) %>%
+    filter(term %in% c('accuracy', 'sensitivity', 'specificity', 'precision','f1')) %>%
+    mutate(cutoff=cutoff)
+  
+}
+
+plot_confmatrix_data  <- function (df,name)
+  {
+    cutoffs = seq(0.01,1,0.01)
+    logit_pred_val= map_dfr(cutoffs, function(x){prediction_metrics(cutoff = x,df = df)})%>% mutate(term=as.factor(term))
+    
+    ggplot(logit_pred_val, aes(cutoff,estimate, group=term, color=term)) + geom_line(size=1) +
+                    theme_bw() +
+                    labs(title= 'Métricas del modelo', subtitle= name, color="") 
+    
+  }
+
+models <- models %>% 
+            mutate(
+              matrix_val_data = map2(pred_val,models,plot_confmatrix_data)
+              )
+
+ggarrange( plotlist = models$matrix_val_data, nrow=2,ncol = 2)
+```
+
+Nuevamente, con excepción del modelo de una sola variable, todos tienen un comportamiento similar. El accuracy llega a un tope de alrededor de 0.85 y en los extremos llega a las proporciones originales del dataset ( Ej: Si digo que todos sobrevivieron, voy a acertar en los sobrevivientes). Por esta razón, esta métrica puede mostrar conclusiones equivocadas en conjuntos muy desbalanceados. Vemos que la especificidad y la sensibilidad se mantienen altas en el rango de cutoffs mencionado anteriormente ( aproximadamente desde 0.25 hasta 0.6). Dado que no hay una prioridad respecto de qué tipo de error tiene más costo, se utilizará el f-score para evaluar el punto de corte. El f-score es una media armónica  de la sensibilidad y la precisión.
+
+El punto de corte optimo se determina en validación y no se modifica al evaluar en testing, esto es muy importante para no hacer optimizaciones en base a información que no tendremos a la hora de predecir.
+
+```{r}
+
+# Buscamos el cutoff que maximiza la métrica ( OJO: Solo para métricas en las que los máximos no estan en los bordes)
+
+calculate_confmatrix <- function(confmatrix_metrics_plot,df,metric){
+  # Buscamos el cutoff óptimo
+  
+  confmatrix_metrics = confmatrix_metrics_plot$data
+  metric_data = confmatrix_metrics[confmatrix_metrics$term==metric,]
+  max_metric = max(metric_data[,'estimate'],na.rm=TRUE)
+  cutoff <- max(metric_data[metric_data$estimate==max_metric,'cutoff'],na.rm = TRUE)
+  # Armamos la tabla de confusión y la devolvemos
+  table <- df %>%
+  mutate(
+    predicted_class=if_else(.fitted>cutoff, 1, 0) %>% as.factor(),Survived= factor(Survived)
+    )
+
+  confmatrix = confusionMatrix(data = table$predicted_class,reference = table$Survived, positive = "1")
+
+  return(confmatrix)
+  }
+
+
+# Mapeamos la matriz de confusión, usamos las métricas de validación para determinar el cutoff
+models <- models %>% 
+            mutate(
+              confmatrix_train = map2(matrix_val_data,pred_train,calculate_confmatrix,metric = 'f1'),
+              confmatrix_val = map2(matrix_val_data,pred_val,calculate_confmatrix,metric = 'f1'),
+              confmatrix_test = map2(matrix_val_data,pred_test,calculate_confmatrix,metric = 'f1')
+              )
+
+
+```
+
+A continuación vemos los resultados en el conjunto de valición:
+
+```{r}
+
+# Mostramos las matrices
+models$confmatrix_val$newvariable_model
+
+```
+
+Vemos que se consiguió un alto nivel de aciertos, con un accuracy de 0.83 (incluso al balancearla por la proporción de las clases, se mantiene alta). Vemos que los falsos positivos y negativos estan equilibrados, producto de haber maximizado el f-score. Este resultado se debe a que esta métrica pondera de la misma manera los falsos negativos y falsos positivos.
+
+Veamos ahora en los datos de testing:
+
+```{r}
+models$confmatrix_test$newvariable_model
+
+```
+
+Como era de esperarse, los errores aumentaron, llevando el accuracy a valores menores. Sin embargo, podemos ver que se mantiene la proporcion entre los faltos negativos y los falsos positivos. Para poder entender el efecto de maximizar el f-score, vamos a generar la matriz de confusión  utilizando el punto de corte que maximiza el accuracy.
+
+```{r}
+
+models <- models %>% 
+            mutate(
+              confmatrix_train = map2(matrix_val_data,pred_train,calculate_confmatrix,metric = 'accuracy'),
+              confmatrix_val = map2(matrix_val_data,pred_val,calculate_confmatrix,metric = 'accuracy'),
+              confmatrix_test = map2(matrix_val_data,pred_test,calculate_confmatrix,metric = 'accuracy')
+              )
+
+# Mostramos las matrices
+models$confmatrix_val$newvariable_model
+
+models$confmatrix_test$newvariable_model
+
+```
+
+El punto de corte elegido muestra una mejora del accuracy en testing. Sin embargo, al mirar el accuracy balanceado vemos que mantiene valores similares a los vistos al usar el f-score. En este caso, el maximizar esta métrica desemboca en una mayor cantidad de falsos negativos respecto de los falsos positivos.
+
+
+
+
+
+

@@ -1,0 +1,300 @@
+---
+title: "Trabajo Práctico 1: Análisis Exploratorio e Introducción a Regresión lineal"
+author: Patricio Massaro
+date: "2020-10-05"
+output: 
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+# Librerías
+
+```{r } 
+library(rmarkdown)
+library(purrr)
+library(tidyverse)
+library(GGally)
+library(corrr)
+library(tidymodels)
+library(ggplot2)
+```
+
+# Funciónes auxiliares
+
+Definimos función para eliminar outliers univariados utilizando el criterio del rango intercuartil. Los parámetros de entrada son una columna del DataFrame y el multiplicador del IQR a utilizar
+
+```{r}
+delete_outliers_IQR <- function(column) {
+  iqr_multiplier=3
+  lowerq = quantile(column)[2]
+  upperq = quantile(column)[4]
+  iqr = upperq - lowerq 
+  upperth = (iqr * iqr_multiplier) + upperq
+  lowerth = lowerq - (iqr * iqr_multiplier)
+  result_mask <- column > upperth | column < lowerth
+  column[result_mask] <- NA
+  return (column)
+}
+
+```
+
+# Preparación de los datos (I)
+
+
+Vamos a leer el archivo ar_properties.csv y mostrar su estructura 
+
+
+```{r}
+GrandParent_folder <- dirname(dirname(rstudioapi::getSourceEditorContext()$path))
+Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
+Properties = read.csv(file = paste(Parent_folder,"/Datasets/ar_properties.csv",sep=""), dec = ",")
+Properties %>% str(give.length = FALSE, give.atrr=FALSE,no.list = TRUE,vec.len = 1)
+```
+
+
+Me quedo con aquellos registros que:
+
+* Pertenecen a Argentina y Capital Federal
+* Cuyo precio esta en dólares (USD)
+* El tipo de propiedad sea: Departamento, PH o Casa
+* El tipo de operacion sea Venta
+
+Seleccionaremos las variables __id, l3, rooms, bedrooms, bathrooms, surface_total, surface_covered, price__ __y property_type__.
+
+El dataset debería tener 61905 observaciones y 9 variables
+
+
+```{r}
+Properties_Filtered <- Properties %>% 
+                    rename(Country = l1, District = l2) %>%  # Renombro por comodidad
+                    filter( (Country == "Argentina" & District == "Capital Federal") &  # Aplico  filtros 
+                            (currency == "USD") & 
+                            (property_type %in% c("Departamento","PH","Casa")) &
+                            (operation_type == "Venta")  
+                           )  %>% 
+                    select(c("id","l3","rooms","bedrooms","bathrooms","surface_total","surface_covered","price","property_type")) 
+
+
+
+print(paste0("Filas del nuevo DataFrame: ",dim(Properties_Filtered)[1]))
+print(paste0("Columnas: ",dim(Properties_Filtered)[2])) 
+```
+Hemos llegado a la estructura correcta, pasaremos ahora a la siguiente etapa.
+
+
+
+# Análisis exploratorios (I)
+
+Se obtienen la cantidad de valores únicos y de valores faltantes (NAs) para cada una de las variables.
+
+
+```{r warning=FALSE}
+Properties_Filtered %>%  summarise_all(funs(100*sum(is.na(.))/length(.))) %>% data.frame() # NAs en porecentaje del total
+
+Properties_Filtered %>%  summarise_all(n_distinct) %>% data.frame()  # VAlores unicos
+```
+
+Vemos que la variable "bedrooms" posee una alta cantidad de nulos (40%). Continuamos el análisis haciendo una matriz de correlaciones y graficándola.
+
+```{r warning=FALSE}
+Properties_Filtered.cor <- Properties_Filtered %>%
+                           select_if(is.numeric) %>%
+                           cor(use="complete.obs",)%>%  
+                           data.frame() # Guardamos un  DataFrame de correlaciones
+
+Properties_Filtered %>% 
+  select_if(is.numeric) %>%
+  correlate() %>% # convierte la matriz de corr en dataframe
+  shave() %>% # solo muestra información debajo de la diagonal principal
+  fashion()
+
+Properties_Filtered %>% 
+            select_if(is.numeric) %>% 
+            correlate(quiet = TRUE) %>% 
+            rplot(print_cor = TRUE,colors = c("red", "green"))
+
+
+
+```
+
+
+Se observan ahora las correlaciones entre las variables  de superficie total y superficie cubierta, entre cuartos y cuartos de baño. Finalmente se muestran la correlación de la variable precio con el resto de las columnas del dataset.
+
+
+```{r}
+paste0("Correlación entre superficie total y cubierta: ",Properties_Filtered.cor["surface_total","surface_covered"]) # Correlación bastante alta
+paste0("Correlación entre cuartos y baños de la propiedad: ",Properties_Filtered.cor["rooms","bathrooms"]) # Correlación bastante alta tambien
+Properties_Filtered.cor["price",] # Variable mas correlacionada : surface_covered
+
+
+```
+
+Se reportan valores altos de correlación tanto para las superficies total y cubierta como para las variables cuartos y baños de la propiedad. Esto tiene un correlato en la realidad dado que la superficie total es la suma de la superficie cubierta y descubierta, y la cantidad de baños suele estar muy relacionada con la cantidad de cuartos de la propiedad. Resulta llamativo que el precio tenga una correlación muy baja con las variables de superficie, esto será analizado con mayor profundidad mas adelante.
+
+
+
+# Limpieza de datos
+
+La variable bedrooms presenta una alta proporción de valores faltantes y una fuerte correlación con la variable rooms. Por lo tanto, vamos a eliminarla. También se eliminarán los valores faltantes y los registros con superficie total menor a superficie cubierta.
+
+
+```{r}
+Properties_Clean <- Properties_Filtered %>% 
+                    select(-c("bedrooms")) %>%  
+                    drop_na() %>% 
+                    filter(surface_total >= surface_covered)
+
+print(paste0("Filas del nuevo DataFrame: ",dim(Properties_Clean)[1]))
+print(paste0("Columnas: ",dim(Properties_Clean)[2])) 
+```
+
+# Análisis exploratorio (II)
+
+Se crea la variable precio en miles dividiendo *price* por 1000, obtenemos estadísticas descriptivas de la misma y realizamos un histograma. 
+
+```{r}
+# Agregamos la variable precio en miles de dolares
+Properties_Clean <- Properties_Clean %>%  
+                   mutate(precio_en_miles = price/1000)
+
+summary(Properties_Clean$precio_en_miles)  #Estadísticas descriptivas
+
+# Graficamos el histograma y modelamos una normal 
+ggplot(Properties_Clean,aes( x=precio_en_miles)) +
+  geom_histogram( aes(y=..density..),
+                  breaks = seq(0,3000,by=100),
+                  colour="black",
+                  fill = "white",) +
+  stat_function(fun = dnorm, args = list(mean=mean(Properties_Clean$precio_en_miles), sd= sd(Properties_Clean$precio_en_miles)))
+```
+
+
+Verificamos las características de la variable pero aperturando por el tipo de propiedad.
+
+
+
+```{r}
+# Estadísticas descriptivas por grupo, dropeando los niveles que no tienen ocurrencias ( casa de campo, cochera, etc)
+Properties_Clean %>% 
+  select("precio_en_miles","property_type") %>% 
+  split(.$property_type,drop = TRUE) %>% 
+  map(summary)
+
+# Boxplot del precio por tipo de propiedad
+ggplot(data = Properties_Clean,
+       mapping = aes(x = property_type, y = precio_en_miles, colour = property_type)) + 
+  geom_boxplot() + 
+  theme_bw() + 
+  theme(legend.position = "none")
+```
+
+
+En los boxplots, se observa un valor en promedio mayor del precio para las casas, teniendo una mediana y un rango intercuartil mayor. Sin embargo, los outliers no permiten una buena apreciación del gráfico, habiendo una mayor cantidad de los mismos en el caso de departamentos.
+
+Procedemos a utilizar la función _ggpairs_ para realizar un análisis más profundo.
+
+
+
+```{r}
+# ggpairs a varibales numericas
+Properties_Clean %>% 
+  select_if(is.numeric) %>% 
+  ggpairs(progress = FALSE)   
+
+```
+
+
+El comportamiento observado en los boxplots se repite en otras variables como se puede ver en el gráfico de _ggpairs_. El precio tiene una distribución muy sesgada hacia la izquierda (muchas propiedades con valor bajo y muy pocas con alto). Las variables de superficie poseen un sesgo aún mayor, lo cual parece afectar los scatter plots. Se pueden observar también algunos outliers muy groseros en estas variables.
+
+# Outliers
+
+Gráficamos un scatterplot para el precio y la superficie total.
+
+```{r}
+# Hay un par de puntos con valores muy altos de superficie
+ggplot(Properties_Clean,aes(x=precio_en_miles,y=surface_total)) +
+    geom_point() +
+    ggtitle("Scatter Plot del precio y la superficie total")
+```
+
+
+Algunos registros tienen valores muy altos de superficie, lo cual distorsiona el análisis. Procedemos a borrar los outliers con un criterio del rango intercuartil ( outliers severos, en donde el IQR es multiplicado por 3 para obtener los límites inferiores y superiores). 
+
+Luego de eliminar outliers, se repiten los análisis.
+
+```{r}
+Properties_NoOutliers = Properties_Clean %>% 
+                        map_if(is.numeric,delete_outliers_IQR) %>%  # Llevamos los outliers univariados a NA
+                        data.frame() %>%  
+                        drop_na() 
+
+```
+
+# Análisis exploratorio III
+
+Repetimos los análisis del punto 4 junto con un scatterplot 
+
+```{r}
+summary(Properties_NoOutliers$precio_en_miles)
+
+ggplot(Properties_NoOutliers,aes(x=precio_en_miles,y=surface_total)) +
+    geom_point() + 
+    ggtitle("Scatter Plot del precio y la superficie total, quitando outliers")
+
+ggplot(Properties_NoOutliers,aes( x=precio_en_miles)) +
+  geom_histogram( aes(y=..density..),
+                  breaks = seq(0,3000,by=100),
+                  colour="black",
+                  fill = "white") +
+  stat_function(fun = dnorm, args = list(mean=mean(Properties_NoOutliers$precio_en_miles), sd= sd(Properties_NoOutliers$precio_en_miles)))
+  
+  
+Properties_NoOutliers %>% 
+  select("price","property_type") %>% 
+  split(.$property_type,drop = TRUE) %>% 
+  map(summary)
+
+
+ggplot(data = Properties_NoOutliers, mapping = aes(x = property_type, y = precio_en_miles, colour = property_type)) + 
+  geom_boxplot() + theme_bw() + theme(legend.position = "none")
+
+
+Properties_NoOutliers %>% 
+  select_if(is.numeric) %>% 
+  ggpairs(progress = FALSE)   
+
+```
+
+
+La diferencia es muy clara al hacer el scatter plot entre las variables y también al analizar las correlaciones. Los outliers distorsionaron las medidas y en el caso del scatter plot, no dejaban observar la relación presente entre las variables. Es importante resaltar que al eliminar los outliers, la correlación del precio y las variables de superficie aumentó considerablemente.
+
+Lo observado en los boxplots anteriores se puede apreciar en mayor detalle esta vez, las casas tienden a tener valores mas grandes, siendo PH y departamento similares en general. Nuevamente, los departamentos son los que mas valores extremos tienen.
+
+El nuevo scatter plot permite inferir una relación entre la superficie de una propiedad y su precio, lo cual justifica realizar un modelo lineal y observar los valores de sus estadísticos.
+
+
+
+# Modelo Lineal
+
+Se realizan los modelos lineales para las variables pedidas: 
+
+```{r}
+
+model_rooms= lm(formula = precio_en_miles ~ rooms, data = Properties_NoOutliers)
+summary(model_rooms)
+tidy(model_rooms)
+#plot(model_rooms)
+```
+
+Se puede ver que el t value es muy alto y el p-value es muy bajo. Esto permite rechazar la hipótesis de que la pendiente de la recta sea 0. Los coeficientes estimados poseen además un error estandar pequeño. A continuación se analizará el modelo lineal a partir de la variable superficie, que en los scatter plots parecía tener una relación mayor. Una posible forma de comparación entre los modelos es el coeficiente de determinación, que explica la proporción de variabilidad del fenómeno que logra explicar el modelo. En este caso, su valor es de alrededor de 0.37
+
+
+```{r}
+model_surface= lm(formula = precio_en_miles ~ surface_total, data = Properties_NoOutliers)
+summary(model_surface)
+tidy(model_surface)
+#plot(model_surface)
+```
+
+Efectivamente, se observa un t value mas grande y un p-valor muy chico. Por otro lado, la métrica del R-squared que permite ver cuanta variabilidad de la variable original capturamos con el modelo, posee un valor mas grande. Las métricas obtenidas sugieren que el modelo de superficie permite una predicción más fiable del precio.

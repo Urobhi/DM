@@ -1,0 +1,544 @@
+---
+title: 'Trabajo Práctico 2: Análisis Exploratorio e Introducción a Regresión lineal'
+author: "Patricio Massaro"
+date: '2020-11-10'
+output:
+  html_document:
+    df_print: paged
+  theme: spacelab
+  toc: yes
+  toc_float: yes
+  df_print: paged
+  html_notebook: null
+---
+
+# Librerías
+
+```{r } 
+library(rmarkdown)
+library(purrr)
+library(tidyverse)
+library(GGally)
+library(corrr)
+library(tidymodels)
+library(ggplot2)
+library(gridExtra)
+
+```
+
+# Funciones Auxiliares
+
+```{r}
+
+graficar_diagnostico_modelo <- function(augment_model,tidy_model) {
+# Graficamos diagnostico con ggplot, input : modelo habiendo aplicado augment y modelo en formato tidy
+
+# Plot de los Coeficientes
+plot_coef=  ggplot(tidy_model, aes(estimate, term, xmin = conf.low, xmax = conf.high, height = 0)) +
+                  geom_point(color = "forestgreen", size=2) +
+                  geom_vline(xintercept = 0, lty = 4, color = "black") +
+                  geom_errorbarh(color = "forestgreen", size=1) +
+                  theme_bw() +
+                  labs(y = "Coeficientes β", x = "Estimación")
+print(plot_coef)
+
+
+# Plot de diagnostico
+g1 = ggplot(augment_model, 
+       aes(.fitted, .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  geom_smooth(se = FALSE) +
+  labs(title = "Residuos vs valores predichos") + 
+  theme_bw()
+g2 = ggplot(augment_model, 
+       aes(sample = .std.resid)) +
+  stat_qq() +
+  geom_abline() +
+  labs(title = "Normal QQ plot") + 
+  theme_bw()
+g3 = ggplot(augment_model, 
+       aes(.fitted, sqrt(abs(.std.resid)))) +
+  geom_point() +
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "Scale-location plot")
+g4 = ggplot(augment_model, 
+       aes(.hat, .std.resid)) +
+  geom_vline(size = 2, colour = "white", xintercept = 0) +
+  geom_hline(size = 2, colour = "white", yintercept = 0) +
+  geom_point() + 
+  geom_smooth(se = FALSE) + 
+  theme_bw() +
+  labs(title = "Residual vs leverage")
+
+grid.arrange(g1,g2,g3,g4,nrow=2)
+}
+
+```
+
+# Carga de Datos de entrenamiento
+
+Cargamos los datos de entrenamiento y vemos su estructura. En paralelo, cargamos un dataset que muestra las estaciones de subte que tiene cada barrio. Esto será usado como variable para un modelo.
+
+```{r}
+Parent_folder <- dirname(rstudioapi::getSourceEditorContext()$path)
+Properties_train = read.csv(file = paste0(Parent_folder,"/Datasets/2-ar_properties_train.csv",sep=""),dec = ",")
+transporte <-read.csv(file = paste0(Parent_folder,"/Datasets/transporte.csv",sep=""),dec = ",")
+
+# Estrutura
+Properties_train %>% str(give.length = FALSE, give.atrr=FALSE,no.list = TRUE,vec.len = 1)
+
+```
+
+```{r}
+# Dropeamos el ID
+Properties_train_noid <- Properties_train %>% dplyr::select(-c('id'))
+                            
+# ggpairs para análisis de los datos
+Properties_train_noid %>% dplyr::select(-c('l3')) %>%  ggpairs(progress = FALSE) 
+```
+
+La estructura ya es conocida del Trabajo práctico 1, como variables tenemos :
+
+* rooms: Cuartos de la propiedad
+* bathrooms: baño de la propiedad
+* surface_total : Superficie total de la propiedad
+* surface_covered : Superficie cubierta de la propiedad 
+* price: Precio de la propiedad en dólares
+* property_type: Casa, PH o Departamento.
+
+
+Se observan correlaciones altas entre el target y las variables predictoras. También se observa alta correlación entre las variables predictoras, especialmente rooms y bathrooms. La categoría correspondiente al tipo de propiedad parece tener incidencia en el precio de la misma.
+
+# Primera regresión lineal múltiple
+
+
+```{r}
+# Modelo usando todo
+modelo_price_todo <- lm(price ~ . , data = Properties_train_noid)
+summary(modelo_price_todo)
+
+# Resumen del modelo usando tidy, ordenamos por p-value
+tidy_meg <- tidy(modelo_price_todo, conf.int = TRUE)
+tidy_meg %>%  arrange (desc(p.value))
+
+```
+Se analizan los distintos coeficientes y ssu significatividad : 
+
+* El intercept utiliza como variables categóricas basales al barrio abasto , tipo de propiedad Casa. Por otro lado, tendría 0 cuartos, 0 baños, 0 superficie. Debido a esto, su valor es negativo.  
+* Los barrios tienen impactos diversos, esto está relacionado con barrios mejor o peor posicionados económicamente respecto del barrio Abasto. Por ejemplo: el barrio de Belgrano implica un aumento del precio, mientras que la boca una disminución. 
+* Otro punto muy importante a destacar es que varios barrios tienen un p-value mayor a 0.05, con lo cual no es posible considerarlos significativos.
+* Tanto la cantidad de baños, como la superficie total y cubierta tienen impacto positivo en el precio, con un p-value bajo.
+* La cantidad de cuartos tiene impacto negativo, es muy probable que este resultado contra-intuitivo tenga relación con que a igual superficie total, un aumento en los cuartos implica una reducción en el tamaño de los ambientes.
+* De forma similar, la diferencia de superficie entre casas y departamentos o PHs hace que las categorías del tipo de propiedad tengan un impacto positivo en el precio. Una casa de poca superficie total tendrá un valor muy inferior que un departamento con el mismo espacio, debido a que este último estará mejor ubicado. Estas variables tienen un p-value cercano a 0, por lo que son consideradas significativas.
+
+
+Respecto del modelo, se observa un R^2 ajustado de 0.7766, esto marca que se puede explicar una buena parte de la variabilidad del precio con las variables predictoras. El test de significatividad global posee un p-value muy bajo, con lo cual se puede decir que hay una relación entre el precio y los predictores.
+
+
+## Modelo sin l3
+```{r}
+# Eliminemos l3 del modelo
+modelo_price_nol3 <- lm(price ~ . -l3 , data = Properties_train_noid)
+summary(modelo_price_nol3)
+
+
+# Resumen del modelo
+tidy_meg <- tidy(modelo_price_nol3, conf.int = TRUE)
+tidy_meg %>%  arrange (desc(p.value))
+```
+Se puede ver una reducción en el R^2, sin embargo, la cantidad de variables disminuyó significativamente.  Una consecuencia de la reducción de variables es el aumento de los residuos estándar.
+
+Aquí se presenta un trade-off, en donde puede ser mejor tener menos variables a costa de sacrificar un poder predictivo.  Todas las variables utilizadas poseen significatividad así como también el test global.
+
+# Creación de nuevas variables
+
+Una posible solución al problema anterior es disminuir la cardinalidad de la variable l3. Para esto, se agruparán los barrios en 3 categorías distintas en base al precio por metro cuadrado de las propiedades
+
+Análisis de la distribución del precio en los barrios y generación de nueva variable barrio
+```{r}
+
+ggplot(data = Properties_train_noid,
+       mapping = aes(x =price/surface_total , y =l3 , colour = l3)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none")
+
+ggplot(data = Properties_train_noid,
+       mapping = aes( y = price/surface_total)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+```
+
+Se observan algunos barrios con valores muy altos como puerto madero, mientras otros tienen una gran variabilidad como Palermo. Como criterio, se decidió realizar una división por percentil. En lugar de dividir los percentiles de forma equitaviva, se eligió tomar como alto al de 20% mayor precio promedio por metro cuadrado, mientras que el 40% mas bajo será considerado como otra categoría. Los valores que esten entre esos dos extremos serán considerados medios.
+
+La función generadora se muestra abajo, sin embargo, los datos fueron guardados en csv y cargados en el notebook.
+
+
+```{r}
+
+# Properties_train_noid_barrios <- Properties_train_noid %>%
+#                                  mutate(price_m2 = price/surface_covered)
+# 
+# media_price_m2_barrios        <- Properties_train_noid_barrios %>%
+#                                  group_by(l3) %>%
+#                                  summarize(price_m2 = mean(price_m2))
+# 
+# media_price_m2_barrios = media_price_m2_barrios %>%
+#                                   mutate(    barrio = cut(price_m2,
+#                                                        method = "fixed",
+#                                                        breaks = c(-Inf,
+#                                                                   quantile(price_m2, 0.40, na.rm = TRUE),
+#                                                                   quantile(price_m2, 0.80, na.rm = TRUE),
+#                                                                   quantile(price_m2, 1, na.rm = TRUE)
+#                                                                   ),
+#                                                        labels = c("bajo","medio","alto"))
+#                                                        ) %>%
+#                                   dplyr::select(-c('price_m2'))
+# 
+#  write.csv( media_price_m2_barrios, file = 'Pricem2_mean_byl3.csv',row.names = FALSE)
+```
+
+## Regresión lineal multiple con variable Barrio
+
+
+
+```{r}
+media_price_m2_barrios = read.csv(file = paste0(Parent_folder,"/Datasets/Pricem2_mean_byl3.csv",sep=""),dec = ",")
+
+# Joineamos los datos con la tabla de barrios y eliminamos l3
+Properties_train_noid_barrios <- Properties_train_noid %>% 
+                                 inner_join(media_price_m2_barrios,by = c("l3" = "l3")) %>% 
+                                 dplyr::select(-c('l3'))
+
+# Modelo 
+modelo_price_barrio <- lm(price ~ .  , data = Properties_train_noid_barrios)
+summary(modelo_price_barrio)
+# Resumen del modelo
+tidy_meg <- tidy(modelo_price_barrio, conf.int = TRUE)
+tidy_meg %>%  arrange (desc(p.value))
+```
+Observamos que la categoría basal del barrio es "alto", por lo que los barrios bajo y medio tienen un impacto negativo. Puede verse también que el intercepto es más alto que en los casos anteriores, esto es debido a que anteriormente, el barrio basal era Abasto, que ahora corresponde a un valor medio/bajo.
+
+Todas las variables poseen significatividad así como tambien el modelo pasa el test global. Vemos que el R^2 bajó respecto del modelo que utiliza l3, con lo que en forma estricta, el modelo que "mejor" explica la variabilidad es el primero. 
+
+Sin embargo, la pérdida de R^2 trae consigo la disminución de la cantidad de variaboles, mejorando el poder explicativo. En este aspecto, resulta más útil el modelo que utiliza barrio.
+
+## Eliminación de superficie total
+
+Eliminamos la variable surface_total, para esto generamos la superficie descubierta.
+```{r}
+# calculamos superficie descubierta y eliminamos la total
+
+Properties_train_noid_barrios_descubierta <- Properties_train_noid_barrios %>% 
+                                             mutate( surface_uncovered = surface_total - surface_covered) %>% 
+                                             dplyr::select(-c("surface_total"))
+
+# Como quedaron los nuevos datos?
+Properties_train_noid_barrios_descubierta %>%  ggpairs(progress = FALSE) 
+
+
+# Modelo 
+modelo_price_barrio_descubierta <- lm(price ~ . , data = Properties_train_noid_barrios_descubierta)
+summary(modelo_price_barrio_descubierta)
+# Resumen del modelo
+tidy_meg <- tidy(modelo_price_barrio_descubierta, conf.int = TRUE)
+tidy_meg %>%  arrange (desc(p.value))
+
+```
+No se observan mejoras al hacer este cambio de variables. El R^2 ajustado sigue siendo igual y tanto las variables como el modelo pasan el test de significatividad. Esto puede deberse a que tenemos la misma información al estar haciendo operaciones lineales sobre los predictores.
+
+Se puede ver que una unidad de superficie cubierta tiene un impacto mayor en el precio, lo cual tiene sentido en lo que se ve en la realidad.
+
+
+# Diagnostico del modelo
+
+```{r}
+
+# HAcemos augment + tiny y usamos la función definida
+
+augment_modelo = augment(modelo_price_barrio_descubierta) 
+tidy_modelo <- tidy(modelo_price_barrio_descubierta, conf.int = TRUE)
+
+graficar_diagnostico_modelo(augment_model = augment_modelo,
+                            tidy_model =  tidy_modelo)
+
+```
+
+Al mostrar los coeficientes y sus respectivos intervalos de confianza, vemos que ninguno contiene al 0, lo cual permite dar cuenta de la significatividad de los coeficientes. Los mayores intervalos de confianza son de las categorías del tipo de propiedad.
+
+Respecto de los gráficos de diagnóstico: 
+
+* Los residuos tienen media distinta de cero para los valores bajos de precio. El supuesto de homocedasticidad no se cumple para nada.
+* Ninguno de los dos extremos ajustan bien a la distribución teórica
+* Existe un punto con leverage alto
+* Los residuos estandarizados presentan una estructura definida y no se cumple el supuesto de homocedasticidad.
+
+Vemos que no se da el cumplimiento de los supuestos, ahora aplicaremos una transformación de logaritmo para evaluar nuevamente.
+
+# Modelo Log
+
+Se aplica la transformación de logaritmo natural a las variables según lo planteado en el TP. Se suma un delta de regularización para evitar calcular el logaritmo de 0.
+
+```{r}
+delta = 0.01
+
+# Aplicamos log a las variables pedidas
+Properties_train_noid_barrios_descubierta_log <-  Properties_train_noid_barrios_descubierta %>% 
+                                                  mutate(
+                                                    price = log(price+delta),
+                                                    rooms = log(rooms+delta),
+                                                    bathrooms = log(bathrooms+delta),
+                                                    surface_covered = log(surface_covered+delta),
+                                                    surface_uncovered = log(surface_uncovered+delta)
+                                                  )
+
+# Modelo lineal
+modelo_price_barrio_descubierta_log <- lm(price ~ . , data = Properties_train_noid_barrios_descubierta_log)
+summary(modelo_price_barrio_descubierta_log)
+
+#Resumen del modelo
+tidy_modelo <- tidy(modelo_price_barrio_descubierta_log, conf.int = TRUE)
+tidy_modelo %>%  arrange (desc(p.value))   
+
+
+augment_modelo = augment(modelo_price_barrio_descubierta_log) 
+
+graficar_diagnostico_modelo(augment_model = augment_modelo,
+                            tidy_model =  tidy_modelo)
+                                           
+```
+
+Tanto las variables como el modelo pasan el test de significatividad, los intervalos de confianza de los estimadores no incluyen al 0. La transformación aplcada hace que no sean comparables los residuos en forma absoluta. Sin embargo, el R^2 ajustado resulta  más alto sin haber agregado variables. 
+
+Es importante analizar la transformación para entender los coeficientes: 
+
+* Las variables rooms, bathrooms y surface_covered son mayores a 1, por lo que la transformación es siempre positiva y el impacto mantiene la dirección del coeficiente.
+* Para el caso de surface_uncovered, puede valer 0 ( se suma un delta para evitar esto). En ese caso, la transformación será negativa, por lo que se invierte la dirección del coeficiente.
+* Los coeficientes de las variables categóricas son mucho menores debido a que ahora impactan en el logaritmo del precio. Según el libro de Introducción a la econometría de Woodridge, es posible entender que un barrio bajo implica una caida del valor de aproximadamente 42%. Este mismo análisis puede hacerse para cada variable dummy.
+* El intercept ahora es positivo.
+
+Respecto de los supuestos, en todos los casos se ven mejoras. Más en detalle:
+
+* Los residuos tienen prácticamente media nula, aunque la homocedasticidad no se cumple.
+* Los extremos del QQplot no ajustan a la distribución teórica, pero en mucha menor medida respecto del modelo anterior
+* Aparece la misma muestra con alto leverage
+* Los residuos normalizados tienen una leve estructura y la homocedasticidad no se cumple.
+
+# Modelos propios
+
+Para el primer modelo, se agregará una variable llamada ratio_ambientes. Su formula será :
+
+$$ \frac{surface\_covered}{rooms + bathrooms}$$
+
+La idea de este ratio es tener una idea de la proporción de los cuartos de una propiedad. Valores irrealmente altos de esta métrica pueden implicar que haya más superficie en espacios comunes como comedores o cocina.
+
+
+```{r}
+# Agregamos nueva variable ratio_ambientes
+Properties_train_noid_barrios_descubierta_log_ratio <- Properties_train_noid_barrios_descubierta_log %>%
+                                                         mutate(ratio_ambientes = surface_covered/(rooms+bathrooms))
+
+# Modelo lineal
+modelo_price_barrio_descubierta_log_ratio <- lm(price ~ .  , data = Properties_train_noid_barrios_descubierta_log_ratio)
+summary(modelo_price_barrio_descubierta_log_ratio)
+
+# Resumen del modelo
+tidy_modelo <- tidy(modelo_price_barrio_descubierta_log_ratio, conf.int = TRUE)
+tidy_modelo %>%  arrange (desc(p.value))   
+augment_modelo = augment(modelo_price_barrio_descubierta_log_ratio) 
+
+
+graficar_diagnostico_modelo(augment_model = augment_modelo,tidy_model =tidy_modelo  )
+```
+
+La variable resulta significativa, lo cual es positivo. Sin embargo el aumento del R^2 es marginal y no justifica el agregado de la misma en el modelo. Los coeficientes no cambiaron mucho a excepción de rooms, lo cual tiene sentido debido al impacto de la nueva métrica. No se ven cambios en los gráficos de diagnostico. 
+
+## Modelo 2: 
+
+Un elemento crucial en la compra de una propiedad es la facilidad de transporte. Debido a eso, se buscó una manera de ponderar este factor en el conjuntos de datos. Se armó un indicador que muestra cuantas estaciones de subte existen en cada barrio, se unen los datos y se genera el modelo. Dado que la clave para joinear es l3, se arma el dataset de 0 y se borra la columna al final.
+
+```{r}
+
+# Como anteriormenbte borramos antes a l3, armamos el dataset de 0.
+Properties_train_noid_barrios_descubierta_log_transporte <-  Properties_train_noid %>% 
+                                                               inner_join(media_price_m2_barrios,by = c("l3" = "l3")) %>% 
+                                                                 mutate( 
+                                                                 surface_uncovered = surface_total - surface_covered, 
+                                                                 price = log(price+delta),
+                                                                 rooms = log(rooms+delta),
+                                                                 bathrooms = log(bathrooms+delta),
+                                                                 surface_covered = log(surface_covered+delta),
+                                                                 surface_uncovered = log(surface_uncovered+delta),
+                                                                 ratio_ambientes = surface_covered/(rooms+bathrooms)) %>%
+                                                               left_join(transporte,by = c('l3'='Barrio')) %>% 
+                                                               replace(is.na(.),0) %>%
+                                                               dplyr::select(-c("l3","surface_total"))
+ 
+                                                               
+                                                             
+                                                               
+
+
+
+# Modelo lineal
+modelo_log_transporte <- lm(price ~ ., data = Properties_train_noid_barrios_descubierta_log_transporte)
+summary(modelo_log_transporte)
+
+# Resumen del modelo
+tidy_modelo <- tidy(modelo_log_transporte, conf.int = TRUE)
+tidy_modelo %>%  arrange (desc(p.value))
+augment_modelo = augment(modelo_log_transporte) 
+
+
+
+graficar_diagnostico_modelo(augment_model = augment_modelo,
+                            tidy_model =  tidy_modelo)
+
+                                           
+```
+
+A pesar de tener un p-value bajo en el test de sgnificatividad individual, el R^2 ajustado no se movió. Nuevamente, no está justificado agregar esta variable al modelo. Los coeficientes no variaron demasiado respecto del modelo anterior y los gráficos de diagnostico no han cambiado. Vemos que la variable estaciones tiene un coeficiente bajo pero positivo.
+
+
+# Selección de modelo
+
+Los modelos que se evaluarán en testing serán :
+
+* Modelo sin l3 y con barrios
+* Modelo  con la variable de superficie descubierta
+* Modelo nuevo 1 ( aplicando log y agregando ratio_ambientes)
+* Modelo nuevo 2 (aplicando log y agregando ratio_ambientes y variable de movilidad)
+
+Se aplica el mismo procesamiento que fue usado en el dataset de entrenamiento. Se muestran los rmse de todos los modelos, al finalizar, se muestra un gráfico del precio estimado versus el precio real de las propiedades.
+
+```{r}
+Properties_test = read.csv(file = paste0(Parent_folder,"/Datasets/2-ar_properties_test.csv",sep=""),dec = ",")
+
+# Dropeamos el ID
+Properties_test_noid <- Properties_test %>% 
+                    dplyr::select(-c('id'))
+
+```
+
+## Modelo sin l3 y con barrios
+
+```{r}
+
+Properties_test_noid_barrios <- Properties_test_noid %>% 
+                                  inner_join(media_price_m2_barrios,by = c("l3" = "l3")) %>% 
+                                  dplyr::select(-c('l3'))
+
+# Agregamos la predicciones al dataset de testeo
+pred_exp_price = augment(modelo_price_barrio, newdata=Properties_test_noid_barrios) 
+rmse(data = pred_exp_price, truth = price, estimate = .fitted)
+g1 = ggplot(pred_exp_price, 
+       aes(x = price,y = .fitted)) +
+  geom_point(size=2)+
+  geom_abline() +
+  labs(title = "Modelo1") + 
+  theme_bw()
+
+```
+
+## Modelo con superficie descubierta
+
+```{r}
+
+Properties_test_noid_barrios_descubierta <- Properties_test_noid_barrios %>% 
+                                             mutate( surface_uncovered = surface_total - surface_covered) %>% 
+                                             dplyr::select(-c("surface_total"))
+
+# Agregamos la predicciones al dataset de testeo
+pred_exp_price = augment(modelo_price_barrio_descubierta, newdata=Properties_test_noid_barrios_descubierta) 
+pred_exp_price %>% head(5)
+rmse(data = pred_exp_price, truth = price, estimate = .fitted)
+g2= ggplot(pred_exp_price, 
+       aes(x = price,y = .fitted)) +
+  geom_point(size=2)+
+  geom_abline() +
+  labs(title = "Modelo 2") + 
+  theme_bw()
+
+
+```
+
+## Modelo con ratio_ambientes
+
+```{r}
+Properties_test_noid_barrios_descubierta_log_ratio <-  Properties_test_noid_barrios_descubierta %>% 
+                                                  mutate(
+                                                    price = log(price+0.01),
+                                                    rooms = log(rooms+0.01),
+                                                    bathrooms = log(bathrooms+0.01),
+                                                    surface_covered = log(surface_covered+0.01),
+                                                    surface_uncovered = log(surface_uncovered+0.01), 
+                                                    ratio_ambientes = surface_covered/(rooms+bathrooms))
+                                                    
+
+                                                  
+# Agregamos la predicciones al dataset de testeo
+pred_exp_price = augment(modelo_price_barrio_descubierta_log_ratio, newdata=Properties_test_noid_barrios_descubierta_log_ratio) 
+pred_exp_price <- pred_exp_price %>% 
+                  mutate(price = exp(price),
+                         .fitted = exp(.fitted))
+rmse(data = pred_exp_price, truth = price, estimate = .fitted)
+g3= ggplot(pred_exp_price, 
+       aes(x = price,y = .fitted)) +
+  geom_point(size=2)+
+  geom_abline() +
+  
+  labs(title = "Modelo 3") + 
+  theme_bw()
+```
+## Modelo con ratio_ambientes y movilidad
+
+```{r}
+Properties_test_noid_barrios_transporte <- Properties_test_noid %>% 
+                                              inner_join(media_price_m2_barrios,by = c("l3" = "l3")) %>% 
+                                              left_join(transporte,by = c('l3'='Barrio')) %>% 
+                                              replace(is.na(.),0) %>%
+                                              mutate( 
+                                                  surface_uncovered = surface_total - surface_covered,
+                                                  price = log(price+0.01),
+                                                  rooms = log(rooms+0.01),
+                                                  bathrooms = log(bathrooms+0.01),
+                                                  surface_covered = log(surface_covered+0.01),
+                                                  surface_uncovered = log(surface_uncovered+0.01),
+                                                  ratio_ambientes = surface_covered/(rooms+bathrooms)) %>%
+                                                  dplyr::select(-c("surface_total","l3"))
+
+                                                                  
+                                                  
+# Agregamos la predicciones al dataset de testeo
+pred_exp_price = augment(modelo_log_transporte, newdata=Properties_test_noid_barrios_transporte) 
+pred_exp_price <- pred_exp_price %>% 
+                  mutate(price = exp(price),
+                         .fitted = exp(.fitted))
+rmse(data = pred_exp_price, truth = price, estimate = .fitted)
+
+
+
+g4 = ggplot(pred_exp_price, 
+       aes(x = price,y = .fitted)) +
+  geom_point(size=2)+
+  geom_abline() +
+  
+  labs(title = "Modelo 4") + 
+  theme_bw()
+
+```
+Analizando el rmse de los modelos, es posible quedarse con el tercero tanto como con el cuarto. De estos últimos, la mejor opción es el tercero debido a que utiliza menos variables explicativas, con un RMSE ligeramente inferior. Esta diferencia en el error puede apreciarse en el gráfico que se muestra abajo. En el eje x se muestran los precios reales del dataset mientras que en el eje y se muestran las predicciones. Una predicción perfecta daria como resultado que los puntos esten alineados, formando una recta de pendiente 1. Se puede ver que en mayor o menor medida, todos los modelos subestiman los precios de las propiedades de precio alto.
+
+
+```{r}
+grid.arrange(g1,g2,g3,g4,nrow=2)
+```
+
+
+
+

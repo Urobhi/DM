@@ -1,0 +1,433 @@
+---
+title: "E.D.A.: Exploratory data analysis"
+
+date: "2020-09-07"
+version: 0.91 
+output: 
+  html_document:
+    theme: spacelab
+    highlight: monochrome
+    df_print: paged
+#    toc: true
+#    toc_depth: 2
+
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{css, echo=FALSE}
+.tarea {
+  padding: 1em;
+  border: 2px solid red;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+```
+
+> If the statistics are boring, then you've got the wrong numbers.
+> --- Edward R. Tufte
+
+Una de las partes más importantes de nuestro trabajo es entender las variables con las que vamos a trabajar.  
+
+El primer objetivo va ser levantar los datos en memoria para poder explorar los mismos de forma rápida y eficiente. En caso de no disponer de un equipo con la capacidad de almacener el volumen en memoria, se podrán subir menos meses, analizar mes a mes de forma individual, o recurrir a la nube.
+
+Para esto empezamos limpiando los objectos del entorno que se encuentran memoria.
+
+```{r }
+
+rm( list=ls() )
+gc()
+
+```
+
+Invocamos la librería `data.table` y definimos las variables necesarias.
+
+```{r }
+library( "data.table")
+
+kcarpeta_datasetsOri      <-  "C:/Users/Pato/Documents/GitHub/DM-EyF/datasetsori/"
+kcarpeta_datasets         <-  "C:/Users/Pato/Documents/GitHub/DM-EyF/datasets/"
+kcarpeta_entregas         <-  "C:/Users/Pato/Documents/GitHub/DM-EyF/entregas/"
+
+kcampos_separador               <-  "\t"
+karchivo_entrada_zip            <-  "paquete_premium.txt.gz"
+karchivo_entrada_7meses_zip     <-  "paquete_premium_201906_202001.txt.gz"
+```
+
+Vamos a subir dos conjuntos de datos. Toda la información historica, pero únicamente *2* variables, para no ocupar mucho espacio de nuestra preciada memoria. 
+
+```{r}
+ds_targets <- fread(paste0(kcarpeta_datasetsOri, 
+                        karchivo_entrada_zip,
+                        collapse = ""), header=TRUE, sep=kcampos_separador,
+                        select = c("foto_mes", "clase_ternaria"))
+```
+
+Y luego levantamos los 7 meses ya separados desde Junio de 2019 hasta Enero de 2020
+
+```{r}
+ds <- fread(paste0(kcarpeta_datasets, 
+                        karchivo_entrada_7meses_zip,
+                        collapse = ""), header=TRUE, sep=kcampos_separador
+                        )
+```
+
+Visualizamos las primeras filas. Es una forma de ir metiendo las manos en la masa. Si bien su valor puede parecer baja, seguimos necesitando ver las cosas con nuestros ojos. 
+
+```{r}
+
+head(ds, 10)
+
+# View(head(ds, 500)) # Para poder visualizar más registros desde RStudio
+
+```
+
+
+Empezamos poniendo el foco sobre la variable target mes a mes, tratamos de entender la cantidad de churn hasta el mes *201911* que es el último mes que contamos con la clase ternaria completa.
+
+```{r}
+
+ds_foto_target <- dcast(ds_targets, foto_mes ~ clase_ternaria,
+           length, 
+           subset = (foto_mes <= 201911), 
+           value.var = "clase_ternaria" )
+
+rm(ds_targets) # Limpiamos la memoria que ya no necesitamos
+
+ds_foto_target
+```
+
+Gráfiquemos para empezar a entender la dinámica del problema. Para las visualizaciones vamos a usar la librería `ggplot2`.
+
+```{r}
+library(ggplot2)
+```
+
+Agregamos dos variables a nuestros datos sumarizados, `TOTAL` y `x`, un **id** ordenado que nos va a auxiliar en las visualizaciones.
+
+Notar que se agrega la columna sin asignación! Una pequeña gran maravilla de `data.table`.
+
+```{r}
+ds_foto_target[, c("TOTAL","x") := list(`BAJA+1` + `BAJA+2` + CONTINUA, .I) ]
+ds_foto_target
+```
+
+
+```{r}
+ggplot(ds_foto_target, aes(x = x, y = TOTAL))+
+    geom_line(color="green", size = 1.2) +
+    scale_x_continuous(labels = ds_foto_target$foto_mes, 
+                       breaks = 1:max(ds_foto_target$x), 
+                       name="Foto Mes")  +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+    ggtitle("Cantidad de personas premium a lo largo de los últimos años")
+
+```
+
+Vemos que a nuestro banco no le esta costando sumar **clientes premium**. Pasamos a buscar cuanto representa el **churn** del total de clientes. Para esto calculamos los ratios para las clases. 
+
+```{r}
+
+ds_foto_target[, c("R_BAJAS1","R_BAJAS2") := list(`BAJA+1` / TOTAL,`BAJA+2` / TOTAL)]
+
+```
+
+Y visualizamos los ratios. Vamos a necesitar una tabla auxiliar para adaptarse a la librería `ggplot`.
+
+```{r}
+# Adaptamos la tabla para visualizar con ggplot
+ds_ratios = melt(ds_foto_target,id.vars = c("foto_mes", "x"),
+                measure.vars = c("R_BAJAS1", "R_BAJAS2"))
+ds_ratios
+
+ggplot(ds_ratios, aes(x = x, y = value))+
+  geom_line(aes(colour = variable), size = 1.2) +
+  scale_x_continuous(labels = unique(ds_ratios$foto_mes), breaks = seq(1,35,1), name="Foto Mes") +
+  scale_y_continuous(name="% Churn") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  ggtitle("Variación del Churn a lo largo de los últimos años") 
+
+```
+
+* ¿Qué supone que pudo causar las altas y bajas? (No evalue sólo los ratios)
+
+Por último evaluemos la tasa de bajas / nuevos, para ver la salud de banco. Los nuevos los calculamos quitando del total de un mes, los **CONTINUA** y **BAJA+2** del **mes anterior**.
+
+```{r}
+ds_foto_target[, "NUEVOS" := TOTAL - (
+                  shift(CONTINUA, 1, type="lag") + shift(`BAJA+2`, 1, type="lag"))]
+
+ds_foto_target[, "R_BAJAS_NUEVOS" := `BAJA+1` / NUEVOS]
+ds_foto_target
+```
+
+
+```{r}
+ggplot(ds_foto_target, aes(x = x, y = R_BAJAS_NUEVOS))+
+    geom_line(color="blue", size = 1.2)+
+    scale_x_continuous(labels = ds_foto_target$ds_foto_target, breaks = 1:max(ds_foto_target$x), name="Foto Mes") +
+    geom_hline(yintercept=1, linetype="dashed", color = "red") +
+    geom_text(aes(2,.97,label = "Problemas", color="red"), show.legend = FALSE) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+    ggtitle("Ratio entre la cantidad de Bajas y las Altas")
+
+```
+
+¿Sería sano para el banco que este último *ratio* sea superior a 1? ¿Por qué?
+
+Pasamos a ver las variables que hacen nuestro conjunto de datos. Examinemos la estructura de las variables independientemente, en principio solo sobre un único mes. 
+Exploremos los estadísticos del mes de Noviembre de 2019, usando la librería `skimr`, quizás de la que más se pueden tolerar de estas librerías. Seleccionamos los estadísticos que queremos ver. 
+
+¿Agregaría alguno?
+
+```{r}
+noviembre <- ds[foto_mes == 201911,]
+
+library(skimr)
+
+my_skim <- skim_with(numeric = sfl(n_unique), append = TRUE)
+
+desc <- as.data.table(my_skim(noviembre))
+```
+
+Examinemos los estadísticos resultantes. Sin olvidar a la hora de mirarlos del inmenso [Datasaurus](https://www.autodeskresearch.com/publications/samestats)
+
+```{r}
+desc
+
+# View(desc)
+```
+
+*Preguntas*:
+
+* ¿Qué significa que una variable numérica tenga solo 5 valores distintos?
+
+* ¿Es útil una variable categórica con 120 valores distintos? 
+
+* ¿Cómo son las variables fechas?
+
+* ¿Cómo supone que van a afectar los valores ausentes?
+
+* ¿Todos los valores ausentes tienen el mismo significado?
+
+* ¿Cómo imputaría los valores ausentes?
+
+
+Veamos como se comporta una variable a través de la historia, tomando una cualquiera sin pensar en el problema. Para ver la variable a través del tiempo, haremos el *boxplot* de la misma mes a mes.
+
+```{r}
+
+ggplot(ds, aes(group=foto_mes, y=mcomisiones_mantenimiento)) + geom_boxplot()
+
+```
+
+*Preguntas*
+
+* Son los *boxplot* que está acostumbrado a ver?
+
+* ¿Qué son los puntos negros?
+
+* ¿Por qué se expande la distribución mes a mes? 
+
+* ¿Estas características pueden afectar a la elección del algoritmo para armar el modelo?
+
+La distribución anterior contempla todos los casos. ¿Y si empezamos a ver como se comportan los estadísticos según la clase? Por lo menos para un mes. Veamos las distibuciones de las clases con respecto a esta variable:
+
+```{r}
+
+ggplot(noviembre, aes(x=mcomisiones_mantenimiento)) +
+  facet_grid(clase_ternaria ~ .) +
+  geom_density()
+
+```
+
+¿Conclusiones?
+
+::: {.tarea }
+**TAREA**
+
+Aplique un análisis similiar a las variables *puramente* numéricas que usted considere relevantes.
+
+*Piense* Viendo que las variables a lo largo del tiempo van cambiando 
+
+* ¿Cómo se podría medir la estabilidad de la variable a lo largo del tiempo? 
+* ¿Cómo afectarían estas alteraciones de las variables a los modelos y sus predicciones futuras?
+:::
+
+Pasemos ahora a una variable que podemos *suponer* que puede ser categórica. Tomemos Visa_status, aunque quizás sea más ordinal que categórica (esta no la elegimos ya desde un criterio no tan aleatorio).
+
+
+```{r}
+
+ds_visa_estado <- dcast(noviembre, Visa_status  ~ clase_ternaria, 
+                        length, 
+                        value.var = "clase_ternaria" )
+
+ds_visa_estado
+
+```
+
+Vamos a ver empezar a ver de forma binaria la clase objetivo, y grafiquemos para darnos una idea de la potencia discriminate que tiene esta variable.
+
+
+```{r}
+ds_visa_estado[, total := (`BAJA+1`+`BAJA+2`+CONTINUA)]
+ds_visa_estado[, ratio_baja2 := `BAJA+2` / total]
+ds_visa_estado[, Visa_status := factor(Visa_status)]
+
+```
+
+Gráficamos la cantidad de clientes en cada una de la categorías de `Visa_status`
+
+```{r}
+ggplot(ds_visa_estado, aes(x=Visa_status, y=total)) +
+  geom_bar(stat="identity", fill="blue") + 
+  ggtitle("Cantidad de clientes por categoría de Visa_status")
+```
+
+Y para ver la fuerza de la variable en cada categoría, vemos el ratio de `BAJAS+2` que tiene cada una.
+
+```{r}
+# Utilizado para linea de referencia
+churn_nov <- ds_foto_target[foto_mes == 201911, R_BAJAS2] 
+
+ggplot(ds_visa_estado, aes(x=Visa_status, y=ratio_baja2)) +
+  geom_bar(stat="identity", fill="green") +  geom_hline(yintercept = churn_nov, color="black") + 
+  ggtitle("Ratio de churn por categoría de Visa_status")
+
+
+```
+
+Evaluemos la ganancia de cada una de las categorías para *Visa_status*
+
+```{r}
+
+ds_visa_estado[, Ganancia :=  29250 * `BAJA+2` - 750 * (CONTINUA + `BAJA+1`) ]
+ds_visa_estado
+
+```
+
+Y calculemos la ganancia total, si son quedamos sólo con los que nos "da de comer"
+
+```{r}
+
+cat("Ganancia =",ds_visa_estado[Ganancia > 0, sum(Ganancia)])
+
+```
+
+¡Hemos encontrado un regla que nos hace ganar un montón de plata! 
+
+::: {.tarea }
+**TAREA**
+
+De forma similar a `Visa_status`, analice y combine con la variable `Master_status`. ¿Logra una mejor regla cuando estan combinadas?
+:::
+
+```{r}
+ds_master_estado <- dcast(noviembre, Master_status  ~ clase_ternaria, 
+                        length, 
+                        value.var = "clase_ternaria" )
+
+ds_master_estado[, total := (`BAJA+1`+`BAJA+2`+CONTINUA)]
+ds_master_estado[, ratio_baja2 := `BAJA+2` / total]
+ds_master_estado[, Master_status := factor(Master_status)]
+
+ggplot(ds_master_estado, aes(x=Master_status, y=total)) +
+  geom_bar(stat="identity", fill="blue") + 
+  ggtitle("Cantidad de clientes por categoría de Misa_status")
+
+churn_nov <- ds_foto_target[foto_mes == 201911, R_BAJAS2] 
+
+ggplot(ds_master_estado, aes(x=Master_status, y=ratio_baja2)) +
+  geom_bar(stat="identity", fill="green") +  geom_hline(yintercept = churn_nov, color="black") + 
+  ggtitle("Ratio de churn por categoría de Misa_status")
+
+ds_master_estado[, Ganancia :=  29250 * `BAJA+2` - 750 * (CONTINUA + `BAJA+1`) ]
+ds_master_estado
+cat("Ganancia =",ds_master_estado[Ganancia > 0, sum(Ganancia)])
+
+```
+
+```{r}
+ds_master_visa_estado <- dcast(noviembre, Master_status+Visa_status  ~ clase_ternaria, 
+                        length, 
+                        value.var = "clase_ternaria" )
+
+ds_master_visa_estado[, total := (`BAJA+1`+`BAJA+2`+CONTINUA)]
+ds_master_visa_estado[, ratio_baja2 := `BAJA+2` / total]
+ds_master_visa_estado[, Master_status := factor(Master_status)]
+ds_master_visa_estado[, Visa_status := factor(Visa_status)]
+ds_master_visa_estado
+
+
+ggplot(ds_master_visa_estado, aes(x=interaction(Master_status,Visa_status), y=total)) +
+  geom_bar(stat="identity", fill="blue") + 
+  ggtitle("Cantidad de clientes por categoría de Misa_status")
+
+churn_nov <- ds_foto_target[foto_mes == 201911, R_BAJAS2] 
+
+ggplot(ds_master_visa_estado, aes(x=interaction(Master_status,Visa_status), y=ratio_baja2)) +
+  geom_bar(stat="identity", fill="green") +  geom_hline(yintercept = churn_nov, color="black") + 
+  ggtitle("Ratio de churn por categoría de Misa_status")
+
+ds_master_visa_estado[, Ganancia :=  29250 * `BAJA+2` - 750 * (CONTINUA + `BAJA+1`) ]
+ds_master_visa_estado
+cat("Ganancia =",ds_master_visa_estado[Ganancia > 0, sum(Ganancia)])
+
+```
+
+
+
+
+
+Apliquemos esta regla en los datos de Enero de 2019 y subamos el dataset a *Kaggle*. Para esto tenemos que tomar al foto y calcular la variable `estimulo`. Donde solo enviamos un *estimulo* a los que tienen la variable con un valor distinto de 1. 
+
+```{r}
+enero <- ds[foto_mes == 202001,]
+enero[numero_de_cliente == 4569926, c('Visa_status','Master_status')]
+```
+
+
+```{r}
+enero <- ds[foto_mes == 202001,]
+
+# Cuidado con los NA
+enero[,estimulo := ifelse( (is.na(Visa_status) & is.na(Master_status)), 1,ifelse( Visa_status != 1 | Master_status !=1 , 1, 0))]
+enero[is.na(estimulo),c('estimulo')] <- 0
+head(enero[, c("numero_de_cliente", "estimulo")])
+
+```
+
+Guardamos el conjunto de datos y subimos el archivo a Kaggle
+
+```{r}
+fwrite(enero[, c("numero_de_cliente", "estimulo")], paste(kcarpeta_entregas, "regla_simple_mastervisa.csv", collapse = ""))
+```
+
+::: {.tarea }
+**TAREA**
+
+Tome el rol de un *cortador de bases* y navege los datos y encuentre una regla, subala a Kaggle. No se preocupe si es mala, o si no lo pone *top*. El objetivo no es ese. Para competir ya habrá tiempo.
+:::
+
+**Una ayuda**
+
+Una forma de saber cuales son las variables que merecen nuestra atención, es realizar un modelo y consultar por cuales son pare este, las más importantes. Sin entrar en mucho detalle, hagamos un árbol de decisión y obtengamos un listado de variables para explorar. *Recuerde* que la mejor variable en un árbol, no es necesariamente la mejor variable individual. 
+
+```{r}
+library(rpart)
+
+modelo   <-  rpart( clase_ternaria ~ .,   data = noviembre,   cp=0.005,  xval=0 )
+
+as.data.frame(modelo$variable.importance)
+```
+
+::: {.tarea }
+**TAREA AVANZADA Y OPCIONAL (se verá en la siguiente clase teórica)**
+
+Lo visto es muy útil para las variables de pocas clases. Para variables numéricas es inaccesible esta de forma de hacer reglas. Arme una función que busque para una variable numérica el mejor punto de corte, esto es, que corte la variable en dos partes, dejando en una de las partes la mayor ganancia posible.
+:::

@@ -1,0 +1,5 @@
+"0","models %>% "
+"0","  filter (models == ""baseline_model"") %>% "
+"0","  unnest(pred_train) %>% "
+"0","  filter((Sex == 'female' & Age ==17 & Pclass == 1) | (Sex =='male' & Age==20 & Pclass ==3) ) %>% "
+"0","  dplyr::select(c('Sex','Age','Pclass','.fitted','Survived'))"

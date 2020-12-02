@@ -1,0 +1,5 @@
+"0","Titanic_train %>% "
+"0","  dplyr::select(c('Survived','Pclass','Sex','Age','Fare')) %>%  "
+"0","  ggpairs(progress = FALSE,"
+"0","    mapping = aes(colour=Survived),"
+"0","    legend  = 1) "

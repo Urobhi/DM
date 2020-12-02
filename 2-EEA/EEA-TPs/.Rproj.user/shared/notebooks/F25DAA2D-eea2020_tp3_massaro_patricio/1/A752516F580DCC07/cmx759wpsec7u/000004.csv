@@ -1,0 +1,32 @@
+"0",""
+"0","roc_calculation <- function(df)"
+"0","{"
+"0","  roc_data <- roc(response= df$Survived, predictor = df$.fitted)"
+"0","}"
+"0",""
+"0","# Calculamos curvas ROC"
+"0","models <- models %>% "
+"0","          mutate("
+"0","            roc_data = (map(pred_val,roc_calculation))  "
+"0","          )"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"2","Setting levels: control = 0, case = 1
+"
+"2","Setting direction: controls < cases
+"
+"0","ggroc(models$roc_data, size=1) + "
+"0","  geom_abline(slope = 1, intercept = 1, linetype='dashed') +"
+"0","  theme_bw() + "
+"0","  labs(title='Curvas ROC', color='Modelo')      "
+"0",""

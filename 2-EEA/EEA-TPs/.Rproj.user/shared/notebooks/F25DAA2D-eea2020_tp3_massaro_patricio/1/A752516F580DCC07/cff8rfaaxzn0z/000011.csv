@@ -1,0 +1,361 @@
+"0","prediction_metrics <- function(cutoff, df){"
+"0","  table <- df %>% "
+"0","    mutate(predicted_class=if_else(.fitted>cutoff, 1, 0) %>% as.factor(),"
+"0","           Survived= factor(Survived))"
+"0","  "
+"0","  confusionMatrix(data = table$predicted_class,reference = table$Survived, positive = ""1"") %>%"
+"0","    tidy() %>%"
+"0","    dplyr::select(term, estimate) %>%"
+"0","    filter(term %in% c('accuracy', 'sensitivity', 'specificity', 'precision','f1')) %>%"
+"0","    mutate(cutoff=cutoff)"
+"0","  "
+"0","}"
+"0",""
+"0","plot_confmatrix_data  <- function (df,name)"
+"0","  {"
+"0","    cutoffs = seq(0.01,1,0.01)"
+"0","    logit_pred_val= map_dfr(cutoffs, function(x){prediction_metrics(cutoff = x,df = df)})%>% mutate(term=as.factor(term))"
+"0","    ggplot(logit_pred_val, aes(cutoff,estimate, group=term, color=term)) + geom_line(size=1) +"
+"0","      theme_bw() +"
+"0","      labs(title= 'Model Metrics', subtitle= name, color="""") "
+"0","  }"
+"0",""
+"0","models <- models %>% "
+"0","            mutate(matrix_train_data = (map2(pred_val,models,plot_confmatrix_data)))"
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"2","Problem with `mutate()` input `matrix_train_data`.
+[34mi[39m Levels are not in the same order for reference and data. Refactoring data to match.
+[34mi[39m Input `matrix_train_data` is `(map2(pred_val, models, plot_confmatrix_data))`."
+"2","Levels are not in the same order for reference and data. Refactoring data to match."
+"0","ggarrange( plotlist = models$matrix_train_data, nrow=2,ncol = 2)"
+"2","Removed 14 row(s) containing missing values (geom_path)."
+"2","Removed 76 row(s) containing missing values (geom_path)."
+"2","Removed 8 row(s) containing missing values (geom_path)."
+"2","Removed 8 row(s) containing missing values (geom_path)."

@@ -1,0 +1,296 @@
+---
+title: "Conectando con el negocio"
+
+date: "2020-09-23"
+version: 0.7
+output: 
+  html_document:
+    theme: spacelab
+    highlight: monochrome
+    df_print: paged
+#    toc: true
+#    toc_depth: 2
+
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{css, echo=FALSE}
+.tarea {
+  padding: 1em;
+  border: 2px solid red;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+```
+
+> If you don't collect any metrics, you're flying blind. If you collect and focus on too many, they may be obstructing your field of view. 
+>-- Scott M. Graffius
+
+Continuamos midiendo la calidad de nuestros modelos. En la clase anterior vimos la `curva ROC`, `AUC`, `Accurary` y `Fbeta`, estas dos últimas como curvas. 
+
+Una problematica de los data scientist es que **no es simple sentarse hablar con los usuarios de negocios** y explicarles las bondades de nuestro modelos usando el área bajo la curva.
+
+Acercar los resultados de los modelos y su utilización al negocio es casi un arte.
+
+Vamos a ver otras métricas más amenas al negocio. Para esto vamos a trabajar con dos meses: Septiembre y Noviembre. 
+
+
+```{r}
+rm( list=ls() )
+gc()
+
+library( "data.table")
+
+Parent_folder     <- dirname(rstudioapi::getSourceEditorContext()$path)
+kcarpeta_entregas <- "/entregas/"
+kcampos_separador <- "\t"
+ds        <- fread(paste0(dirname(Parent_folder),"/datasets/paquete_premium_201906_202001.txt.gz",collapse = ""), header = TRUE, sep= kcampos_separador)
+
+              
+
+septiembre <- ds[foto_mes == 201909,] 
+noviembre <- ds[foto_mes == 201911,] 
+
+# Limpio el dataset de varios meses
+rm(ds)
+
+
+```
+
+Modelando con septiembre, trabajando ya con un target binario: `Es BAJA+2, o no lo es`.
+Generamos un modelo sobre el que vamos a hacer las mediciones
+
+```{r}
+
+# Creamos la clase binaria
+
+septiembre <- septiembre[, clase_binaria := ifelse(clase_ternaria == "BAJA+2","evento","no_evento")] 
+noviembre <- noviembre[, clase_binaria := ifelse(clase_ternaria == "BAJA+2","evento","no_evento")]
+
+# Borramos la clase ternaria, foto_mes y numero de cliente.
+
+septiembre <- septiembre[, c("clase_ternaria", "numero_de_cliente", "foto_mes") := NULL] 
+noviembre <- noviembre[, c("clase_ternaria", "numero_de_cliente", "foto_mes") := NULL]
+
+# Hacemos un modelo simple
+library(rpart)
+
+modelo   <-  rpart( clase_binaria ~ .,   data = septiembre, cp=0.0001,  xval=0 )
+
+#Aplicamos el modelo sobre los datos de septiembre y noviembre
+
+prediccion_201909  <- predict( modelo, septiembre, type = "prob")
+prediccion_201911  <- predict( modelo, noviembre, type = "prob")
+
+```
+
+
+### Profit
+
+En nuestro problema, se los va a evaluar por una métrica cercana al negocio, que es el `profit`, algo con lo que no siempre se cuenta, pero a nivel general se utiliza para el cálculo del `ROI` del proyecto.
+
+La generalización de este cálculo se hace a través de de la matriz de profit, similar a la de confusión, pero que asigna a cada celda un peso económica a los  tp, fp, tn y fn. 
+
+Podemos reescribir nuestra función de ganancia de la siguiente manera:
+
+```{r}
+fprofit <- function (pcutoff, pclases, pprobs, pptp, ppfp, pptn, ppfn) 
+{
+    sum((pprobs <= pcutoff  ) * 
+                   ifelse( pclases == "evento", ppfn, pptn )
+        ) +
+
+    sum((pprobs > pcutoff  ) * 
+                   ifelse( pclases == "evento", pptp, ppfp )   
+        )
+}
+```
+
+En nuestro problema solo usamos tp, fp. Con lo cuál podemos aplicar esta fórmula de la siguiente forma para Septiembre
+
+```{r}
+fprofit(0.025, septiembre$clase_binaria, prediccion_201909[, "evento"], 29250,-750,0,0)
+```
+
+Y para Noviembre, con el modelo de Septiembre
+
+```{r}
+fprofit(0.025, noviembre$clase_binaria, prediccion_201911[, "evento"], 29250,-750,0,0)
+```
+
+Nos preocuparemos más adelante de la gran diferencia entre ambos valores.
+
+::: {.tarea }
+**TAREA**
+
+Construya una función que empiricamente busque el mejor punto de corte para cualquier _matriz de profit_.
+
+:::
+
+Pasamos ahora a **otras** métricas que pueden ayudar en su conversación con el negocio. 
+
+Las siguientes métricas son primas entre sí, ven lo mismo. Si ordeno a los clientes por su probabilidad de propensión y elijo a los **x%**, que mejora me ofrece mi modelo. 
+
+### Captura (gain/capture) acumulada
+
+Porcentaje de clientes que se van a ir que capturamos si elegimos al porcentaje `X` de los clientes con mayor probabilidad en nuestro modelo de propensión.
+
+Vamos a tomar como ejemplo, que vamos a evaluar a solo el mejor `5%`, o lo que es lo mismo, el primer `semidecil`:
+
+```{r}
+library(Hmisc)
+
+p201911_score <- data.table(p = prediccion_201911[, "evento"], clase=noviembre$clase_binaria)
+setorder(p201911_score, p)
+p201911_score[, id := .I]
+p201911_score$bin <- as.integer(cut2(p201911_score$id, g=20))
+p201911_score$bin <-  (21 - p201911_score$bin)*5
+
+setorder(p201911_score, bin, p)
+total_bajas <- sum(p201911_score$clase == "evento")
+
+```
+
+Ya contando con una variable que define cual es el `bin` al cual pertenece una probabilidad, pasamos a la construcción de nuestra métrica.
+
+```{r}
+
+
+captura_acum <- p201911_score[, .(captura = sum(clase == "evento")) , by = bin]
+captura_acum[, captura_acum := cumsum(captura)]
+captura_acum[, captura_acum_porc := (captura_acum / total_bajas) * 100]
+captura_acum <- rbindlist(list(
+  data.table(
+    bin = 0,
+    captura = 0,
+    captura_acum = 0,
+    captura_acum_porc = 0
+  ),
+  captura_acum
+))
+
+captura_acum
+```
+
+Esto signifca, que si queremos capturar al 43% de nuestros clientes que se van a ir, tenemos que estimular al mejor 5% que devuelve nuestro modelo.
+
+Pasamos a gráficar la curva de captura 
+
+```{r}
+ggplot(captura_acum, aes(x = bin, y = captura_acum_porc))+
+  geom_point(size = 1.5)+
+  geom_line()
+
+```
+
+#### Lift acumulado
+
+El lift muestra la mejora sobre el porcentaje por defecto de la clase. Esta es una de las métricas más usadas que complementa el `auc`
+
+```{r}
+total_bajas <- sum(p201911_score$clase == "evento")
+ratio_clase <- total_bajas / nrow(p201911_score)
+
+lift_acum <- p201911_score[, .(captura = sum(clase == "evento"), n=.N) , by = bin]
+lift_acum[, c("captura_acum", "n_acum") := list(cumsum(captura),cumsum(n))]
+lift_acum[, lift_acum := (captura_acum / n_acum) / ratio_clase]
+
+lift_acum
+```
+
+Esto se lee: En nuestro mejor 5%, _elevamos_ el porcentaje de `BAJAS+2` de 0.45% a 3,9%, esto es 8.6 veces más. 
+
+Nuevamente graficamos la curva correspondiente.
+
+```{r}
+ggplot(lift_acum, aes(x = bin, y = lift_acum))+
+  geom_point(size = 1.5)+
+  geom_line() + geom_hline(yintercept = 1)
+
+```
+
+#### Respuesta acumulada
+
+Nos sirve para ver que porcentaje de clientes que se van a abordar, corresponden al `target`.
+
+```{r}
+resp_acum <- p201911_score[, .(captura = sum(clase == "evento"), n=.N) , by = bin]
+resp_acum[, c("captura_acum", "n_acum") := list(cumsum(captura),cumsum(n))]
+resp_acum[, resp_acum := (captura_acum / n_acum)*100]
+
+resp_acum
+```
+
+Esto significa, que si se estimula al menor 5%, se va a encontrar un 3,92% de clientes `BAJAS+2`.
+
+Nuevamente la curva correspondiente.
+
+```{r}
+ggplot(resp_acum, aes(x = bin, y = resp_acum))+
+  geom_point(size = 1.5)+
+  geom_line() + geom_hline(yintercept = ratio_clase*100)
+
+```
+
+Las métricas anteriores tienen su versión no acumulada. Pero como la importancia de negocio se focalizada en los porcentajes de clientes que se van a abordar, es más Útil ver las curvas acumuladas para tomar una decisión.
+
+
+### Áreas de riesgo
+
+Las áreas de riesgo tradicionalmente miran como estadístico el `KS` (por Kolmogorov-Smirnov) que consiste en una prueba que mide la similitud entre las distribuciones de buenos y malos.
+
+Para este debemos separar las probabilidades de unos y otros
+
+```{r}
+library(ggplot2)
+
+ggplot(p201911_score, aes(x=p)) +
+    facet_grid(clase ~ .,scales = "free_y") +
+     geom_density()
+
+```
+
+Las diferencias entre las dos distribuciones se miden buscando la diferencia máxima entre las distribuciones acumuladas. Para calcularlo vamos a dividir la probabilidad calculada en 20 bucket y calcular la separación entre cada distribución. La máxima separación será nuestro KS (multiplicado por 100 al mencionarlo)
+
+```{r}
+total_eventos <- sum(p201911_score$clase == "evento") 
+total_noeventos <- sum(p201911_score$clase == "no_evento") 
+
+ks_acum <- p201911_score[, .(eventos = sum(clase == "evento"), n=.N) , by = bin]
+ks_acum[, no_eventos := n - eventos]
+ks_acum[, eventos_acum := cumsum(eventos)]
+ks_acum[, no_eventos_acum := cumsum(no_eventos)]
+ks_acum[, eventos_p_acum := eventos_acum/total_eventos] 
+ks_acum[, no_eventos_p_acum := no_eventos_acum/total_noeventos]
+ks_acum[, c("eventos", "no_eventos","eventos_acum", "no_eventos_acum", "n") := NULL]
+ks_acum <- rbind(data.table(bin = 0, no_eventos_p_acum = 0, eventos_p_acum = 0), ks_acum)
+ks_acum
+```
+
+
+```{r}
+#adaptamos la tabla para poder graficar con ggplot
+
+ks_melt <- melt(ks_acum, id.vars = c("bin"), measure.vars = c("eventos_p_acum", "no_eventos_p_acum"))
+
+ggplot(ks_melt, aes(x = bin, y = value)) +
+  geom_line(aes(colour = factor(variable), group = factor(variable)))
+
+
+```
+
+Donde la máxima separación es
+
+```{r}
+
+ks_acum[, separacion := eventos_p_acum - no_eventos_p_acum]
+ks_acum[separacion==max(separacion),]
+
+```
+
+En este caso la máxima separación se da en el `bin` 10 y se suele decir el valor multiplicado por 100, o sea nuestro modelo tiene un `KS` de 38.
+
+**NO es una buena métrica. Pero es muy usada y es importante que la conozcan**
+
